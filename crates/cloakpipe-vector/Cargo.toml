@@ -8,3 +8,10 @@ description = "Vector encryption (ADCPE) for CloakPipe — future scope"
 
 [dependencies]
 anyhow.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
