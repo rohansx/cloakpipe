@@ -10,25 +10,125 @@
   </p>
 </p>
 
-CloakPipe is a Rust-native proxy that sits between your application and any OpenAI-compatible API. It automatically detects sensitive entities in prompts, replaces them with consistent pseudonyms, forwards the sanitized request, and rehydrates the response before returning it to your app. Your LLM provider never sees real data.
-
-```
-Your App  -->  CloakPipe Proxy  -->  LLM API
-                  |                     |
-            Detect & Replace      Process safely
-            "Tata Motors" -> ORG_1      |
-                  |                     |
-            Rehydrate Response    <-----+
-            ORG_1 -> "Tata Motors"
-```
+CloakPipe is a Rust-native privacy proxy for LLM and RAG pipelines. It sits between your application and any OpenAI-compatible API, automatically detecting sensitive entities, replacing them with consistent pseudonyms, and rehydrating responses -- so your LLM provider never sees real data.
 
 ## The Problem
 
-Every RAG pipeline that calls an external embedding or LLM API sends sensitive data in plaintext. Revenue figures, client names, API keys, project codenames, internal URLs -- all of it leaves your network on every request.
+Every RAG pipeline that calls an external API sends sensitive data in plaintext:
 
-Naive redaction (`[REDACTED]`) destroys semantic meaning and breaks retrieval. Python-based PII tools add 50-200ms of latency per call and miss financial/business data entirely. Cloud-locked solutions (Bedrock guardrails, OPAQUE) only work within their own ecosystem.
+```
+                        WITHOUT CLOAKPIPE
+                        =================
 
-CloakPipe takes a different approach: **consistent pseudonymization**. The same entity always maps to the same token (`ORG_7`, `AMOUNT_12`, `PERSON_5`), preserving semantic structure for embeddings and retrieval while keeping real values out of third-party APIs.
+ Your App                              LLM / Embedding API
+    |                                        |
+    |  "Tata Motors reported Rs 3.4L Cr      |
+    |   revenue. Contact: cfo@tata.com       |
+    |   AWS key: AKIAIOSFODNN7EXAMPLE"       |
+    |                                        |
+    +--------- PLAINTEXT over HTTPS -------->|  <-- Provider sees everything
+    |                                        |
+    |  "Tata Motors reported strong Q3..."   |
+    |<---------------------------------------+
+```
+
+Naive redaction (`[REDACTED]`) destroys semantic meaning and breaks retrieval. Python PII tools add 50-200ms latency and miss financial data. Cloud-locked solutions only work within their own ecosystem.
+
+## The Solution: Consistent Pseudonymization
+
+CloakPipe replaces sensitive entities with **consistent tokens** that preserve semantic structure:
+
+```
+                         WITH CLOAKPIPE
+                         ==============
+
+ Your App              CloakPipe Proxy              LLM API
+    |                       |                          |
+    |  "Tata Motors         |                          |
+    |   reported Rs 3.4L    |                          |
+    |   Cr revenue in       |                          |
+    |   Q3 2025. Contact:   |                          |
+    |   cfo@tata.com"       |                          |
+    +---------------------->|                          |
+                            |                          |
+                     DETECT & PSEUDONYMIZE             |
+                     +-------------------------+       |
+                     | Tata Motors  -> ORG_7    |       |
+                     | Rs 3.4L Cr  -> AMOUNT_12|       |
+                     | Q3 2025     -> DATE_3   |       |
+                     | cfo@tata.com-> EMAIL_5  |       |
+                     +-------------------------+       |
+                            |                          |
+                            |  "ORG_7 reported         |
+                            |   AMOUNT_12 revenue      |
+                            |   in DATE_3. Contact:    |
+                            |   EMAIL_5"               |
+                            +------------------------->|
+                            |                          |
+                            |  "ORG_7 had strong       |  Provider sees
+                            |   AMOUNT_12 growth..."   |  only pseudonyms
+                            |<-------------------------+
+                            |
+                     REHYDRATE RESPONSE
+                     +-------------------------+
+                     | ORG_7      -> Tata Motors|
+                     | AMOUNT_12  -> Rs 3.4L Cr|
+                     +-------------------------+
+                            |
+    |  "Tata Motors had     |
+    |   strong Rs 3.4L Cr   |
+    |   growth..."          |
+    |<----------------------+
+
+    User sees real data.
+    LLM never saw it.
+```
+
+The same entity **always maps to the same token** across documents, queries, and sessions. This means:
+- Embeddings preserve semantic structure (vector search still works)
+- Multi-turn conversations stay coherent
+- The LLM reasons over pseudonyms, and rehydration restores real values
+
+## Where CloakPipe Sits in a RAG Pipeline
+
+```
+ Documents                          User Queries
+     |                                   |
+     v                                   v
+ +---------+                       +-----------+
+ | Chunker |                       | Query     |
+ +---------+                       +-----------+
+     |                                   |
+     v                                   v
+ +--------------------------------------------------+
+ |                   CLOAKPIPE                       |
+ |                                                   |
+ |  +------------+  +-------+  +-----------------+  |
+ |  | Detection  |->| Vault |->| Pseudonymize    |  |
+ |  | Engine     |  | (AES) |  | (consistent)    |  |
+ |  +------------+  +-------+  +-----------------+  |
+ |   regex|finance|custom|NER    entity -> token     |
+ +--------------------------------------------------+
+     |                                   |
+     v                                   v
+ Embedding API                     LLM API
+ (sees pseudonyms)                 (sees pseudonyms)
+     |                                   |
+     v                                   v
+ Vector DB                         +--------------------------------------------------+
+ (pseudonymized                    |                   CLOAKPIPE                       |
+  embeddings)                      |  +-----------------+  +-------+                   |
+     |                             |  | Rehydrate       |->| Vault |                   |
+     +--- retrieve context ------->|  | (streaming SSE) |  | (AES) |                   |
+                                   |  +-----------------+  +-------+                   |
+                                   +--------------------------------------------------+
+                                                             |
+                                                             v
+                                                        User sees
+                                                        real data
+```
+
+**4 leak points in a standard RAG pipeline. CloakPipe covers all of them.**
 
 ## Features
 
@@ -227,13 +327,40 @@ log_entities = true    # Log entity metadata (never raw values)
 
 ## How It Works
 
-1. **Detect** -- Multi-layer engine scans for sensitive entities in the request body
-2. **Pseudonymize** -- Replace each entity with a consistent token (`ORG_1`, `EMAIL_3`, `AMOUNT_7`). Mappings are persisted in an AES-256-GCM encrypted vault
-3. **Forward** -- Send the sanitized request to the upstream LLM/embedding API
-4. **Rehydrate** -- Swap tokens back to original values in the response, including real-time SSE streaming with token-aware chunk buffering
-5. **Audit** -- Log request metadata (entity counts, categories, latency) without ever recording raw values
+```
+Request Flow:
 
-The vault ensures consistency: "Tata Motors" always maps to `ORG_7`, across documents, queries, and sessions. This preserves semantic structure for embeddings and retrieval.
+  Incoming request
+       |
+       v
+  +------------------+     +------------------+     +------------------+
+  |  1. DETECT       |---->|  2. PSEUDONYMIZE |---->|  3. FORWARD      |
+  |                  |     |                  |     |                  |
+  |  Multi-layer     |     |  Entity -> Token |     |  Sanitized req   |
+  |  engine scans    |     |  stored in AES   |     |  to upstream API |
+  |  request body    |     |  encrypted vault |     |                  |
+  +------------------+     +------------------+     +------------------+
+                                                           |
+  +------------------+     +------------------+            |
+  |  5. AUDIT        |<----|  4. REHYDRATE    |<-----------+
+  |                  |     |                  |
+  |  Log metadata    |     |  Token -> Entity |    Response Flow
+  |  (never raw      |     |  in response,    |    (including SSE
+  |   values)        |     |  including SSE   |     streaming)
+  +------------------+     |  streaming with  |
+                           |  chunk buffering |
+                           +------------------+
+                                  |
+                                  v
+                           Response to app
+                           (real values restored)
+```
+
+**Key design decisions:**
+- **Consistent mappings** -- "Tata Motors" always maps to `ORG_7`, across all documents, queries, and sessions
+- **Encrypted vault** -- Mappings persisted with AES-256-GCM; keys zeroed from memory via `zeroize`
+- **Streaming-aware** -- SSE rehydration handles tokens split across chunks (e.g., `OR` + `G_7`)
+- **Metadata-only audit** -- Logs record entity counts and categories, never the actual values
 
 ## Project Structure
 
