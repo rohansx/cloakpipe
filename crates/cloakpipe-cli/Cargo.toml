@@ -11,9 +11,10 @@ name = "cloakpipe"
 path = "src/main.rs"
 
 [dependencies]
-cloakpipe-core = { path = "../cloakpipe-core", version = "0.1.0" }
-cloakpipe-proxy = { path = "../cloakpipe-proxy", version = "0.1.0" }
-cloakpipe-audit = { path = "../cloakpipe-audit", version = "0.1.0" }
+cloakpipe-core = { path = "../cloakpipe-core", version = "0.2.0" }
+cloakpipe-proxy = { path = "../cloakpipe-proxy", version = "0.2.0" }
+cloakpipe-audit = { path = "../cloakpipe-audit", version = "0.2.0" }
+cloakpipe-tree = { path = "../cloakpipe-tree", version = "0.2.0" }
 tokio.workspace = true
 clap.workspace = true
 serde.workspace = true
@@ -23,3 +24,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
 rand.workspace = true
+reqwest.workspace = true

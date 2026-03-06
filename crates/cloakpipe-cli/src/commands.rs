@@ -187,6 +187,204 @@ pub async fn init() -> Result<()> {
     Ok(())
 }
 
+/// CloakTree commands — vectorless document retrieval.
+pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> {
+    let config = if std::path::Path::new(config_path).exists() {
+        load_config(config_path)?
+    } else {
+        tracing::info!("No config file found, using defaults");
+        default_config()
+    };
+
+    let tree_config = &config.tree;
+
+    match action {
+        crate::TreeCommands::Index { file, no_summaries } => {
+            let api_key = std::env::var(&config.proxy.api_key_env).unwrap_or_default();
+            let mut tc = tree_config.clone();
+            if no_summaries {
+                tc.add_node_summaries = false;
+            }
+
+            let indexer = cloakpipe_tree::TreeIndexer::new(
+                tc,
+                api_key,
+                config.proxy.upstream.clone(),
+            );
+
+            let tree_index = indexer.build_index(&file).await?;
+            let path = cloakpipe_tree::storage::TreeStorage::save(
+                &tree_index,
+                &tree_config.storage_path,
+            )?;
+
+            println!("Tree index created:");
+            println!("  ID:     {}", tree_index.id);
+            println!("  Source: {}", tree_index.source);
+            println!("  Nodes:  {}", tree_index.node_count());
+            println!("  Depth:  {}", tree_index.max_depth());
+            println!("  Pages:  {}", tree_index.total_pages);
+            if let Some(desc) = &tree_index.description {
+                println!("  Desc:   {}", desc);
+            }
+            println!("  Saved:  {}", path);
+        }
+
+        crate::TreeCommands::Search { index, query } => {
+            let api_key = std::env::var(&config.proxy.api_key_env)
+                .context("API key required for tree search")?;
+
+            let tree_index = cloakpipe_tree::storage::TreeStorage::load(&index)?;
+            let searcher = cloakpipe_tree::TreeSearcher::new(
+                api_key,
+                config.proxy.upstream.clone(),
+                tree_config.search_model.clone(),
+            );
+
+            let result = searcher.search(&tree_index, &query).await?;
+
+            println!("Search results for: {}", query);
+            println!("  Reasoning: {}", result.reasoning);
+            if let Some(conf) = result.confidence {
+                println!("  Confidence: {:.0}%", conf * 100.0);
+            }
+            println!("  Matching nodes:");
+            for id in &result.node_ids {
+                if let Some(node) = tree_index.find_node(id) {
+                    println!("    [{}] {} (pages {}-{})", id, node.title, node.pages.0, node.pages.1);
+                    if let Some(summary) = &node.summary {
+                        println!("          {}", summary.text);
+                    }
+                }
+            }
+        }
+
+        crate::TreeCommands::List => {
+            let trees = cloakpipe_tree::storage::TreeStorage::list(&tree_config.storage_path)?;
+            if trees.is_empty() {
+                println!("No tree indices found in {}", tree_config.storage_path);
+                println!("Create one with: cloakpipe tree index <file>");
+            } else {
+                println!("Tree indices ({}):", trees.len());
+                for (id, source) in &trees {
+                    println!("  {} -> {}", id, source);
+                }
+            }
+        }
+
+        crate::TreeCommands::Query { file, question } => {
+            let api_key = std::env::var(&config.proxy.api_key_env)
+                .context("API key required for tree query")?;
+
+            // If file is a .json, load existing index; otherwise build one
+            let (tree_index, pages) = if file.ends_with(".json") {
+                let tree_index = cloakpipe_tree::storage::TreeStorage::load(&file)?;
+                let pages = cloakpipe_tree::parser::parse_document(&tree_index.source)?;
+                (tree_index, pages)
+            } else {
+                let indexer = cloakpipe_tree::TreeIndexer::new(
+                    tree_config.clone(),
+                    api_key.clone(),
+                    config.proxy.upstream.clone(),
+                );
+                let tree_index = indexer.build_index(&file).await?;
+                let pages = cloakpipe_tree::parser::parse_document(&file)?;
+
+                // Save for future use
+                let path = cloakpipe_tree::storage::TreeStorage::save(
+                    &tree_index,
+                    &tree_config.storage_path,
+                )?;
+                println!("Index saved: {}\n", path);
+                (tree_index, pages)
+            };
+
+            // Search
+            let searcher = cloakpipe_tree::TreeSearcher::new(
+                api_key.clone(),
+                config.proxy.upstream.clone(),
+                tree_config.search_model.clone(),
+            );
+            let result = searcher.search(&tree_index, &question).await?;
+
+            // Extract content from matching nodes
+            let content = cloakpipe_tree::extractor::ContentExtractor::extract(
+                &tree_index,
+                &result.node_ids,
+                &pages,
+            )?;
+
+            let context_text: String = content
+                .iter()
+                .map(|c| format!("[{}] {}\n{}", c.node_id, c.title, c.text))
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n");
+
+            // Send to LLM for final answer
+            let prompt = format!(
+                "Based on the following document excerpts, answer the question.\n\n\
+                 EXCERPTS:\n{}\n\n\
+                 QUESTION: {}\n\n\
+                 Answer concisely based only on the provided excerpts.",
+                context_text, question
+            );
+
+            let body = serde_json::json!({
+                "model": tree_config.search_model,
+                "messages": [
+                    {"role": "system", "content": "You answer questions based on provided document excerpts. Be precise and cite section titles when relevant."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 1000,
+                "temperature": 0.3
+            });
+
+            let url = format!("{}/v1/chat/completions", config.proxy.upstream.trim_end_matches('/'));
+            let client = reqwest::Client::new();
+            let response = client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&body)
+                .send()
+                .await?
+                .json::<serde_json::Value>()
+                .await?;
+
+            let answer = response["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or("No answer generated");
+
+            println!("Question: {}\n", question);
+            println!("Sources ({}):", result.node_ids.len());
+            for c in &content {
+                println!("  [{}] {} (pages {}-{})", c.node_id, c.title, c.pages.0, c.pages.1);
+            }
+            println!("\nAnswer:\n{}", answer);
+        }
+
+        crate::TreeCommands::Show { index } => {
+            let tree_index = cloakpipe_tree::storage::TreeStorage::load(&index)?;
+
+            println!("Tree Index: {}", tree_index.id);
+            println!("  Source:  {}", tree_index.source);
+            println!("  Model:   {}", tree_index.model);
+            println!("  Pages:   {}", tree_index.total_pages);
+            println!("  Nodes:   {}", tree_index.node_count());
+            println!("  Depth:   {}", tree_index.max_depth());
+            println!("  Created: {}", tree_index.created_at);
+            if let Some(desc) = &tree_index.description {
+                println!("  Desc:    {}", desc);
+            }
+            println!("\nTree structure:");
+            for entry in tree_index.navigation_map() {
+                println!("  {}", entry);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn default_config() -> CloakPipeConfig {
     CloakPipeConfig {
         proxy: cloakpipe_core::config::ProxyConfig {

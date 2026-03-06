@@ -6,18 +6,18 @@
 //! 3. Generates LLM-powered summaries for each node
 //! 4. Optionally pseudonymizes summaries before sending to LLM
 
-use crate::tree::{TreeIndex, TreeNode, NodeSummary};
-use cloakpipe_core::config::TreeConfig;
+use crate::tree::{NodeSummary, TreeIndex, TreeNode};
 use anyhow::Result;
+use cloakpipe_core::config::TreeConfig;
 use tracing::info;
 
 /// Builds tree indices from documents.
 pub struct TreeIndexer {
     config: TreeConfig,
-    /// HTTP client for LLM API calls during summary generation.
     client: reqwest::Client,
-    /// API key for the LLM provider.
     api_key: String,
+    /// Base URL for the LLM API (e.g., "https://api.openai.com").
+    api_base: String,
 }
 
 /// A parsed page from a document.
@@ -32,42 +32,38 @@ pub struct ParsedPage {
 #[derive(Debug, Clone)]
 pub struct Heading {
     pub text: String,
-    pub level: usize, // 1 = top-level, 2 = subsection, etc.
+    pub level: usize,
     pub page: usize,
 }
 
 impl TreeIndexer {
-    pub fn new(config: TreeConfig, api_key: String) -> Self {
+    pub fn new(config: TreeConfig, api_key: String, api_base: String) -> Self {
         Self {
             config,
             client: reqwest::Client::new(),
             api_key,
+            api_base,
         }
     }
 
-    /// Build a tree index from a document file (PDF, DOCX, HTML).
+    /// Build a tree index from a document file.
     pub async fn build_index(&self, file_path: &str) -> Result<TreeIndex> {
         info!("Building tree index for: {}", file_path);
 
-        // Step 1: Parse the document
         let pages = crate::parser::parse_document(file_path)?;
-        info!("Parsed {} pages", pages.len());
+        info!("Parsed {} pages/sections", pages.len());
 
-        // Step 2: Extract document structure (headings, sections)
         let headings = self.extract_all_headings(&pages);
         info!("Found {} headings", headings.len());
 
-        // Step 3: Build the tree hierarchy from headings
         let mut tree = TreeIndex::new(file_path, &self.config.index_model);
         tree.total_pages = pages.len();
         tree.children = self.build_tree_from_headings(&headings, &pages)?;
 
-        // Step 4: Generate summaries for each node via LLM
         if self.config.add_node_summaries {
             self.generate_summaries(&mut tree.children, &pages).await?;
         }
 
-        // Step 5: Generate document-level description
         tree.description = Some(self.generate_doc_description(&tree).await?);
 
         info!(
@@ -79,19 +75,43 @@ impl TreeIndexer {
         Ok(tree)
     }
 
-    /// Extract all headings from parsed pages.
+    /// Build a tree index from raw text (no file needed).
+    pub async fn build_index_from_text(
+        &self,
+        source_name: &str,
+        text: &str,
+    ) -> Result<TreeIndex> {
+        info!("Building tree index from text: {}", source_name);
+
+        let pages = vec![ParsedPage {
+            page_number: 1,
+            text: text.to_string(),
+            headings: Vec::new(),
+        }];
+
+        let mut tree = TreeIndex::new(source_name, &self.config.index_model);
+        tree.total_pages = 1;
+        tree.children = self.build_page_based_tree(&pages)?;
+
+        if self.config.add_node_summaries {
+            self.generate_summaries(&mut tree.children, &pages).await?;
+        }
+
+        tree.description = Some(self.generate_doc_description(&tree).await?);
+
+        Ok(tree)
+    }
+
     fn extract_all_headings(&self, pages: &[ParsedPage]) -> Vec<Heading> {
         pages.iter().flat_map(|p| p.headings.clone()).collect()
     }
 
-    /// Build tree hierarchy from extracted headings.
     fn build_tree_from_headings(
         &self,
         headings: &[Heading],
         pages: &[ParsedPage],
     ) -> Result<Vec<TreeNode>> {
         if headings.is_empty() {
-            // No headings found — create flat page-based nodes
             return self.build_page_based_tree(pages);
         }
 
@@ -99,19 +119,24 @@ impl TreeIndexer {
         let mut stack: Vec<TreeNode> = Vec::new();
 
         for (i, heading) in headings.iter().enumerate() {
-            let next_page = headings.get(i + 1).map(|h| h.page).unwrap_or(pages.len());
+            let next_page = headings
+                .get(i + 1)
+                .map(|h| h.page)
+                .unwrap_or(pages.len());
 
             let node = TreeNode {
                 id: format!("{}", i + 1),
                 title: heading.text.clone(),
                 summary: None,
-                pages: (heading.page, next_page.min(heading.page + self.config.max_pages_per_node)),
+                pages: (
+                    heading.page,
+                    next_page.min(heading.page + self.config.max_pages_per_node),
+                ),
                 token_count: None,
                 children: Vec::new(),
                 depth: heading.level.saturating_sub(1),
             };
 
-            // Simple nesting: if this heading is deeper than the last, nest it
             while let Some(last) = stack.last() {
                 if node.depth <= last.depth {
                     let completed = stack.pop().unwrap();
@@ -128,7 +153,6 @@ impl TreeIndexer {
             stack.push(node);
         }
 
-        // Flush remaining stack
         while let Some(completed) = stack.pop() {
             if let Some(parent) = stack.last_mut() {
                 parent.children.push(completed);
@@ -140,7 +164,6 @@ impl TreeIndexer {
         Ok(root_nodes)
     }
 
-    /// Build a flat page-based tree when no headings are detected.
     fn build_page_based_tree(&self, pages: &[ParsedPage]) -> Result<Vec<TreeNode>> {
         let chunk_size = self.config.max_pages_per_node;
         let mut nodes = Vec::new();
@@ -151,7 +174,7 @@ impl TreeIndexer {
 
             nodes.push(TreeNode {
                 id: format!("{}", i + 1),
-                title: format!("Pages {}-{}", start, end),
+                title: format!("Section {}", i + 1),
                 summary: None,
                 pages: (start, end),
                 token_count: None,
@@ -163,26 +186,25 @@ impl TreeIndexer {
         Ok(nodes)
     }
 
-    /// Generate LLM summaries for all nodes (recursive).
     async fn generate_summaries(
         &self,
         nodes: &mut Vec<TreeNode>,
         pages: &[ParsedPage],
     ) -> Result<()> {
         for node in nodes.iter_mut() {
-            // Extract text for this node's page range
             let text = self.extract_node_text(node, pages);
+            if text.trim().is_empty() {
+                continue;
+            }
 
-            // Generate summary via LLM
             let summary_text = self.call_llm_for_summary(&node.title, &text).await?;
 
             node.summary = Some(NodeSummary {
                 text: summary_text,
-                key_topics: Vec::new(), // TODO: extract key topics
+                key_topics: Vec::new(),
                 pseudonymized: false,
             });
 
-            // Recurse into children
             if !node.children.is_empty() {
                 Box::pin(self.generate_summaries(&mut node.children, pages)).await?;
             }
@@ -190,7 +212,6 @@ impl TreeIndexer {
         Ok(())
     }
 
-    /// Extract raw text for a node's page range.
     fn extract_node_text(&self, node: &TreeNode, pages: &[ParsedPage]) -> String {
         pages
             .iter()
@@ -200,9 +221,7 @@ impl TreeIndexer {
             .join("\n\n")
     }
 
-    /// Call LLM to generate a summary for a section.
     async fn call_llm_for_summary(&self, title: &str, text: &str) -> Result<String> {
-        // Truncate text to max_tokens_per_node
         let truncated = if text.len() > self.config.max_tokens_per_node * 4 {
             &text[..self.config.max_tokens_per_node * 4]
         } else {
@@ -225,8 +244,11 @@ impl TreeIndexer {
             "temperature": 0.3
         });
 
-        let response = self.client
-            .post("https://api.openai.com/v1/chat/completions")
+        let url = format!("{}/v1/chat/completions", self.api_base.trim_end_matches('/'));
+
+        let response = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)
             .send()
@@ -242,7 +264,6 @@ impl TreeIndexer {
         Ok(summary)
     }
 
-    /// Generate a document-level description.
     async fn generate_doc_description(&self, tree: &TreeIndex) -> Result<String> {
         let nav = tree.navigation_map();
         let toc: String = nav.iter().take(20).map(|e| format!("{}\n", e)).collect();
@@ -254,15 +275,16 @@ impl TreeIndexer {
 
         let body = serde_json::json!({
             "model": self.config.index_model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 100,
             "temperature": 0.3
         });
 
-        let response = self.client
-            .post("https://api.openai.com/v1/chat/completions")
+        let url = format!("{}/v1/chat/completions", self.api_base.trim_end_matches('/'));
+
+        let response = self
+            .client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)
             .send()
