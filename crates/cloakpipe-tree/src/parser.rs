@@ -153,20 +153,18 @@ struct HeadingInfo {
 
 fn parse_markdown_heading(line: &str) -> Option<HeadingInfo> {
     let trimmed = line.trim();
-    if trimmed.starts_with("######") {
-        Some(HeadingInfo { text: trimmed[6..].trim().to_string(), level: 6 })
-    } else if trimmed.starts_with("#####") {
-        Some(HeadingInfo { text: trimmed[5..].trim().to_string(), level: 5 })
-    } else if trimmed.starts_with("####") {
-        Some(HeadingInfo { text: trimmed[4..].trim().to_string(), level: 4 })
-    } else if trimmed.starts_with("###") {
-        Some(HeadingInfo { text: trimmed[3..].trim().to_string(), level: 3 })
-    } else if trimmed.starts_with("##") {
-        Some(HeadingInfo { text: trimmed[2..].trim().to_string(), level: 2 })
-    } else if trimmed.starts_with("# ") {
-        Some(HeadingInfo { text: trimmed[2..].trim().to_string(), level: 1 })
+    if let Some(rest) = trimmed.strip_prefix("######") {
+        Some(HeadingInfo { text: rest.trim().to_string(), level: 6 })
+    } else if let Some(rest) = trimmed.strip_prefix("#####") {
+        Some(HeadingInfo { text: rest.trim().to_string(), level: 5 })
+    } else if let Some(rest) = trimmed.strip_prefix("####") {
+        Some(HeadingInfo { text: rest.trim().to_string(), level: 4 })
+    } else if let Some(rest) = trimmed.strip_prefix("###") {
+        Some(HeadingInfo { text: rest.trim().to_string(), level: 3 })
+    } else if let Some(rest) = trimmed.strip_prefix("##") {
+        Some(HeadingInfo { text: rest.trim().to_string(), level: 2 })
     } else {
-        None
+        trimmed.strip_prefix("# ").map(|rest| HeadingInfo { text: rest.trim().to_string(), level: 1 })
     }
 }
 

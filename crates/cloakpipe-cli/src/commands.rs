@@ -52,7 +52,7 @@ fn resolve_vault_key(config: &CloakPipeConfig) -> Result<Vec<u8>> {
 /// Simple hex decoder.
 fn hex_decode(hex: &str) -> Result<Vec<u8>> {
     let hex = hex.trim();
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         bail!("Hex string must have even length");
     }
     (0..hex.len())

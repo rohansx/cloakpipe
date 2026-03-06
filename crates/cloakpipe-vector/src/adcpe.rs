@@ -161,16 +161,12 @@ pub fn decrypt_f32(encryptor: &AdcpeEncryptor, encrypted: &[f32]) -> Result<Vec<
 
 /// Matrix-vector multiplication (row-major matrix).
 fn mat_vec_mul(matrix: &[f64], vector: &[f64], dim: usize) -> Vec<f64> {
-    let mut result = vec![0.0; dim];
-    for i in 0..dim {
-        let row_start = i * dim;
-        let mut sum = 0.0;
-        for j in 0..dim {
-            sum += matrix[row_start + j] * vector[j];
-        }
-        result[i] = sum;
-    }
-    result
+    (0..dim)
+        .map(|i| {
+            let row_start = i * dim;
+            (0..dim).map(|j| matrix[row_start + j] * vector[j]).sum()
+        })
+        .collect()
 }
 
 /// Transpose a square matrix (row-major).

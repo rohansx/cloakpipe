@@ -18,8 +18,7 @@ pub async fn rehydrate_stream(
 
         // Split SSE response into lines and process events
         for line in byte_stream.lines() {
-            if line.starts_with("data: ") {
-                let data = &line[6..];
+            if let Some(data) = line.strip_prefix("data: ") {
 
                 if data == "[DONE]" {
                     yield Ok("data: [DONE]\n\n".to_string());

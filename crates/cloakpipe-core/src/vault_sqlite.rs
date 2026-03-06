@@ -236,10 +236,8 @@ impl SqliteVault {
             Ok((cat, count))
         }).expect("Failed to query stats");
 
-        for row in rows {
-            if let Ok((cat, count)) = row {
-                categories.insert(cat, count);
-            }
+        for (cat, count) in rows.flatten() {
+            categories.insert(cat, count);
         }
 
         VaultStats {
@@ -267,10 +265,8 @@ impl SqliteVault {
             Ok((cat, cnt))
         })?;
 
-        for row in rows {
-            if let Ok((cat, cnt)) = row {
-                categories.insert(cat, cnt);
-            }
+        for (cat, cnt) in rows.flatten() {
+            categories.insert(cat, cnt);
         }
 
         Ok(VaultStats {

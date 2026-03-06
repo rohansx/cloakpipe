@@ -29,7 +29,7 @@ impl TreeStorage {
         if Path::new(dir).exists() {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
-                if entry.path().extension().map_or(false, |e| e == "json") {
+                if entry.path().extension().is_some_and(|e| e == "json") {
                     if let Ok(tree) = Self::load(entry.path().to_str().unwrap_or("")) {
                         trees.push((tree.id, tree.source));
                     }

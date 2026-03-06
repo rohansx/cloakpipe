@@ -188,7 +188,7 @@ impl TreeIndexer {
 
     async fn generate_summaries(
         &self,
-        nodes: &mut Vec<TreeNode>,
+        nodes: &mut [TreeNode],
         pages: &[ParsedPage],
     ) -> Result<()> {
         for node in nodes.iter_mut() {

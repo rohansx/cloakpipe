@@ -5,7 +5,7 @@
   </p>
   <p align="center">
     <a href="https://github.com/rohansx/cloakpipe/actions"><img src="https://img.shields.io/github/actions/workflow/status/rohansx/cloakpipe/ci.yml?style=flat-square" alt="CI"></a>
-    <a href="https://crates.io/crates/cloakpipe"><img src="https://img.shields.io/crates/v/cloakpipe?style=flat-square" alt="crates.io"></a>
+    <a href="https://crates.io/crates/cloakpipe-core"><img src="https://img.shields.io/crates/v/cloakpipe-core?style=flat-square&label=crates.io" alt="crates.io"></a>
     <a href="https://github.com/rohansx/cloakpipe/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
   </p>
 </p>
@@ -366,12 +366,12 @@ Request Flow:
 
 | Crate | crates.io | Description |
 |-------|-----------|-------------|
-| [`cloakpipe-cli`](crates/cloakpipe-cli/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-cli?style=flat-square)](https://crates.io/crates/cloakpipe-cli) | CLI binary (`start`, `test`, `stats`, `init`) |
-| [`cloakpipe-core`](crates/cloakpipe-core/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-core?style=flat-square)](https://crates.io/crates/cloakpipe-core) | Detection, pseudonymization, vault, rehydration |
+| [`cloakpipe-cli`](crates/cloakpipe-cli/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-cli?style=flat-square)](https://crates.io/crates/cloakpipe-cli) | CLI binary (`start`, `test`, `stats`, `init`, `tree`, `vector`) |
+| [`cloakpipe-core`](crates/cloakpipe-core/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-core?style=flat-square)](https://crates.io/crates/cloakpipe-core) | Detection, pseudonymization, vault (file + SQLite), rehydration |
 | [`cloakpipe-proxy`](crates/cloakpipe-proxy/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-proxy?style=flat-square)](https://crates.io/crates/cloakpipe-proxy) | Axum HTTP proxy (chat completions + embeddings) |
-| [`cloakpipe-audit`](crates/cloakpipe-audit/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-audit?style=flat-square)](https://crates.io/crates/cloakpipe-audit) | JSONL audit logging with daily rotation |
-| [`cloakpipe-tree`](crates/cloakpipe-tree/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-tree?style=flat-square)](https://crates.io/crates/cloakpipe-tree) | CloakTree: vectorless retrieval (planned) |
-| [`cloakpipe-vector`](crates/cloakpipe-vector/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-vector?style=flat-square)](https://crates.io/crates/cloakpipe-vector) | Distance-preserving vector encryption (planned) |
+| [`cloakpipe-audit`](crates/cloakpipe-audit/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-audit?style=flat-square)](https://crates.io/crates/cloakpipe-audit) | Audit logging (JSONL + SQLite) with rotation |
+| [`cloakpipe-tree`](crates/cloakpipe-tree/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-tree?style=flat-square)](https://crates.io/crates/cloakpipe-tree) | CloakTree: vectorless document retrieval |
+| [`cloakpipe-vector`](crates/cloakpipe-vector/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-vector?style=flat-square)](https://crates.io/crates/cloakpipe-vector) | ADCPE: distance-preserving vector encryption |
 | [`cloakpipe-local`](crates/cloakpipe-local/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-local?style=flat-square)](https://crates.io/crates/cloakpipe-local) | Fully local RAG mode (planned) |
 
 ## Roadmap
@@ -379,9 +379,9 @@ Request Flow:
 | Version | Feature | Status |
 |---------|---------|--------|
 | v0.1 | Multi-layer detection, consistent pseudonymization, encrypted vault, OpenAI-compatible proxy, SSE streaming, audit logging | **Released** |
-| v0.2 | CloakTree -- vectorless, reasoning-based retrieval for structured documents | Planned |
-| v0.3 | ONNX-based NER for person/org/location detection | Planned |
-| v0.4 | Distance-preserving vector encryption (ADCPE) | Planned |
+| v0.2 | CloakTree — vectorless, reasoning-based retrieval for structured documents | **Released** |
+| v0.3 | ONNX NER, SQLite vault/audit, multi-user support | **Released** |
+| v0.4 | Distance-preserving vector encryption (ADCPE) | **Released** |
 | v0.5 | Fully local mode with zero external API calls | Planned |
 | v0.6 | TEE support (AWS Nitro Enclaves, Intel TDX) | Planned |
 
@@ -391,7 +391,7 @@ Request Flow:
 cargo test
 ```
 
-22 tests covering vault encryption, multi-layer detection, pseudonymization roundtrips, streaming rehydration, and end-to-end proxy behavior.
+45 tests covering vault encryption, multi-layer detection, pseudonymization roundtrips, streaming rehydration, SQLite vault/audit, ADCPE vector encryption, and end-to-end proxy behavior.
 
 ## Security
 

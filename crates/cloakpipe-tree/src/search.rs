@@ -80,6 +80,7 @@ impl TreeSearcher {
         let current_nodes = &tree.children;
         let mut all_reasoning = Vec::new();
 
+        #[allow(clippy::never_loop)]
         for round in 0..self.max_rounds {
             debug!(
                 "Search round {} with {} candidates",

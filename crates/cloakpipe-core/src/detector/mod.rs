@@ -68,7 +68,7 @@ impl Detector {
         entities.extend(self.custom_detector.detect(text)?);
 
         // Filter: remove preserved entities
-        entities.retain(|e| !self.preserve_list.iter().any(|p| e.original == *p));
+        entities.retain(|e| !self.preserve_list.contains(&e.original));
 
         // Add: force-anonymize entities
         for forced in &self.force_list {

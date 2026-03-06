@@ -9,7 +9,7 @@ pub struct CustomDetector {
 }
 
 struct CustomRule {
-    name: String,
+    _name: String,
     regex: Regex,
     category: EntityCategory,
 }
@@ -19,7 +19,7 @@ impl CustomDetector {
         let mut rules = Vec::new();
         for pattern in &config.custom.patterns {
             rules.push(CustomRule {
-                name: pattern.name.clone(),
+                _name: pattern.name.clone(),
                 regex: Regex::new(&pattern.regex)?,
                 category: EntityCategory::Custom(pattern.category.clone()),
             });
