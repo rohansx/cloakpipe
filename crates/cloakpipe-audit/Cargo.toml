@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Structured audit logging for CloakPipe"
 
 [dependencies]
-cloakpipe-core = { path = "../cloakpipe-core", version = "0.3.0" }
+cloakpipe-core = { path = "../cloakpipe-core", version = "0.4.0" }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

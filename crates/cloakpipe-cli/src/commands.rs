@@ -385,6 +385,100 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
     Ok(())
 }
 
+/// ADCPE vector encryption commands.
+pub async fn vector(action: crate::VectorCommands) -> Result<()> {
+    match action {
+        crate::VectorCommands::Encrypt { input, output, dim } => {
+            let key = resolve_vector_key()?;
+            let config = cloakpipe_vector::AdcpeConfig { dimensions: dim, noise_scale: 0.0 };
+            let mut enc = cloakpipe_vector::AdcpeEncryptor::new(&key, &config)?;
+
+            let data = std::fs::read_to_string(&input)
+                .with_context(|| format!("Cannot read: {}", input))?;
+            let vectors: Vec<Vec<f64>> = serde_json::from_str(&data)
+                .context("Input must be a JSON array of float arrays")?;
+
+            let encrypted = enc.encrypt_batch(&vectors)?;
+            let json = serde_json::to_string_pretty(&encrypted)?;
+            std::fs::write(&output, json)?;
+
+            println!("Encrypted {} vectors (dim={}) -> {}", vectors.len(), dim, output);
+        }
+
+        crate::VectorCommands::Decrypt { input, output, dim } => {
+            let key = resolve_vector_key()?;
+            let config = cloakpipe_vector::AdcpeConfig { dimensions: dim, noise_scale: 0.0 };
+            let enc = cloakpipe_vector::AdcpeEncryptor::new(&key, &config)?;
+
+            let data = std::fs::read_to_string(&input)
+                .with_context(|| format!("Cannot read: {}", input))?;
+            let encrypted: Vec<Vec<f64>> = serde_json::from_str(&data)
+                .context("Input must be a JSON array of float arrays")?;
+
+            let decrypted = enc.decrypt_batch(&encrypted)?;
+            let json = serde_json::to_string_pretty(&decrypted)?;
+            std::fs::write(&output, json)?;
+
+            println!("Decrypted {} vectors (dim={}) -> {}", encrypted.len(), dim, output);
+        }
+
+        crate::VectorCommands::Test { dim } => {
+            let key = resolve_vector_key()?;
+            let config = cloakpipe_vector::AdcpeConfig { dimensions: dim, noise_scale: 0.0 };
+            let mut enc = cloakpipe_vector::AdcpeEncryptor::new(&key, &config)?;
+
+            // Generate sample vectors
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let a: Vec<f64> = (0..dim).map(|_| rng.gen::<f64>() - 0.5).collect();
+            let b: Vec<f64> = (0..dim).map(|_| rng.gen::<f64>() - 0.5).collect();
+
+            let cos_orig = cloakpipe_vector::adcpe::cosine_similarity(&a, &b);
+
+            let ea = enc.encrypt(&a)?;
+            let eb = enc.encrypt(&b)?;
+            let cos_enc = cloakpipe_vector::adcpe::cosine_similarity(&ea, &eb);
+
+            let da = enc.decrypt(&ea)?;
+            let max_err: f64 = a.iter().zip(da.iter())
+                .map(|(x, y)| (x - y).abs())
+                .fold(0.0, f64::max);
+
+            println!("ADCPE Test (dim={})", dim);
+            println!("  Cosine similarity (original):  {:.6}", cos_orig);
+            println!("  Cosine similarity (encrypted): {:.6}", cos_enc);
+            println!("  Distance preserved: {}", if (cos_orig - cos_enc).abs() < 1e-10 { "YES" } else { "NO" });
+            println!("  Roundtrip max error: {:.2e}", max_err);
+            println!("  Roundtrip exact: {}", if max_err < 1e-10 { "YES" } else { "NO" });
+        }
+    }
+
+    Ok(())
+}
+
+/// Resolve the ADCPE vector encryption key from env.
+fn resolve_vector_key() -> Result<[u8; 32]> {
+    let env_var = "CLOAKPIPE_VECTOR_KEY";
+    match std::env::var(env_var) {
+        Ok(hex_key) => {
+            let bytes = hex_decode(&hex_key)
+                .with_context(|| format!("{} must be a 64-char hex string", env_var))?;
+            if bytes.len() != 32 {
+                bail!("{} must be 32 bytes (got {})", env_var, bytes.len());
+            }
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            Ok(key)
+        }
+        Err(_) => {
+            tracing::warn!("No {} set — generating ephemeral key", env_var);
+            let mut key = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut key);
+            Ok(key)
+        }
+    }
+}
+
 fn default_config() -> CloakPipeConfig {
     CloakPipeConfig {
         proxy: cloakpipe_core::config::ProxyConfig {

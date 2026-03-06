@@ -39,6 +39,11 @@ enum Commands {
         #[command(subcommand)]
         action: TreeCommands,
     },
+    /// ADCPE: encrypt/decrypt embedding vectors
+    Vector {
+        #[command(subcommand)]
+        action: VectorCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -74,6 +79,36 @@ pub enum TreeCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum VectorCommands {
+    /// Encrypt embedding vectors from a JSON file
+    Encrypt {
+        /// Input JSON file (array of float arrays)
+        input: String,
+        /// Output file for encrypted vectors
+        output: String,
+        /// Vector dimensions
+        #[arg(long, default_value = "1536")]
+        dim: usize,
+    },
+    /// Decrypt embedding vectors
+    Decrypt {
+        /// Input JSON file (encrypted vectors)
+        input: String,
+        /// Output file for decrypted vectors
+        output: String,
+        /// Vector dimensions
+        #[arg(long, default_value = "1536")]
+        dim: usize,
+    },
+    /// Test ADCPE: encrypt sample vectors and verify distance preservation
+    Test {
+        /// Vector dimensions to test
+        #[arg(long, default_value = "8")]
+        dim: usize,
+    },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -91,5 +126,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Stats => commands::stats(&cli.config).await,
         Commands::Init => commands::init().await,
         Commands::Tree { action } => commands::tree(&cli.config, action).await,
+        Commands::Vector { action } => commands::vector(action).await,
     }
 }
