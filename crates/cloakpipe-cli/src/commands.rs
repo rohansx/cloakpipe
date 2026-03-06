@@ -400,6 +400,7 @@ fn default_config() -> CloakPipeConfig {
             encryption: "aes-256-gcm".into(),
             key_env: Some("CLOAKPIPE_VAULT_KEY".into()),
             key_keyring: false,
+            backend: "file".into(),
         },
         detection: cloakpipe_core::config::DetectionConfig {
             secrets: true,

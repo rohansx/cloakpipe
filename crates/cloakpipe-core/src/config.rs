@@ -39,6 +39,8 @@ pub struct VaultConfig {
     pub key_env: Option<String>,
     #[serde(default)]
     pub key_keyring: bool,
+    #[serde(default = "default_vault_backend")]
+    pub backend: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -150,6 +152,8 @@ pub struct AuditConfig {
     pub log_entities: bool,
     #[serde(default)]
     pub log_mappings: bool,
+    #[serde(default = "default_audit_backend")]
+    pub backend: String,
 }
 
 // Default value functions
@@ -159,6 +163,8 @@ fn default_timeout() -> u64 { 120 }
 fn default_max_concurrent() -> usize { 256 }
 fn default_mode() -> String { "cloaktree".into() }
 fn default_encryption() -> String { "aes-256-gcm".into() }
+fn default_vault_backend() -> String { "file".into() }
+fn default_audit_backend() -> String { "jsonl".into() }
 fn default_confidence() -> f64 { 0.85 }
 fn default_tree_path() -> String { "./trees/".into() }
 fn default_tree_model() -> String { "gpt-4o".into() }
@@ -194,6 +200,7 @@ impl Default for AuditConfig {
             retention_days: default_retention(),
             log_entities: true,
             log_mappings: false,
+            backend: default_audit_backend(),
         }
     }
 }
