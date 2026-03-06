@@ -66,7 +66,15 @@ fn hex_decode(hex: &str) -> Result<Vec<u8>> {
 
 /// Start the proxy server.
 pub async fn start(config_path: &str) -> Result<()> {
-    let config = load_config(config_path)?;
+    let config = if std::path::Path::new(config_path).exists() {
+        load_config(config_path)?
+    } else {
+        tracing::info!("No config found, creating {} with defaults", config_path);
+        let config = default_config();
+        let toml_str = toml::to_string_pretty(&config)?;
+        std::fs::write(config_path, toml_str)?;
+        config
+    };
     let key = resolve_vault_key(&config)?;
     let detector = Detector::from_config(&config.detection)?;
     let vault = Vault::open(&config.vault.path, key)?;
