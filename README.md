@@ -142,6 +142,8 @@ The same entity **always maps to the same token** across documents, queries, and
 - **Encrypted vault** -- AES-256-GCM at rest, `zeroize` memory safety for key material
 - **SSE streaming rehydration** -- Token-aware buffering handles pseudonyms split across chunks
 - **Audit logging** -- Structured JSONL logs for compliance (metadata only, never raw values)
+- **Industry profiles** -- Pre-tuned detection for legal, healthcare, fintech; guided setup wizard
+- **MCP server** -- Expose privacy tools to AI agents (Claude, Cursor, custom harnesses)
 - **Single binary** -- No Docker, no Python, no microservices. Deploy in seconds
 - **<5ms overhead** -- Rust-native, sits in the hot path without you noticing
 
@@ -319,6 +321,60 @@ log_path = "./audit/"
 log_entities = true    # Log entity metadata (never raw values)
 ```
 
+## Industry Profiles
+
+CloakPipe ships with pre-tuned detection profiles for different industries:
+
+```bash
+# Interactive setup wizard — choose your industry, provider, and vault backend
+cloakpipe setup
+```
+
+| Profile | What it adds | Use case |
+|---------|-------------|----------|
+| **General** | Balanced defaults — secrets, financial, dates, emails | Most applications |
+| **Legal** | Case numbers, docket IDs, SSNs, bar numbers | Law firms, legal tech |
+| **Healthcare** | MRN, NPI, DEA numbers, ICD codes (HIPAA-aware) | Health tech, clinical AI |
+| **Fintech** | SWIFT/BIC, ISIN, IBAN, routing numbers, IP detection | Banking, trading platforms |
+
+Set in config:
+```toml
+profile = "healthcare"
+```
+
+Or switch at runtime via the MCP `configure` tool or API.
+
+## MCP Server (Agentic Integrations)
+
+CloakPipe exposes its privacy tools as an [MCP](https://modelcontextprotocol.io) server, so AI agents (Claude Code, Cursor, custom agents) can pseudonymize data as a skill:
+
+```bash
+cloakpipe mcp
+```
+
+**Available tools:**
+
+| Tool | Description |
+|------|-------------|
+| `pseudonymize` | Detect and replace sensitive entities with consistent tokens |
+| `rehydrate` | Restore pseudo-tokens back to original values |
+| `detect` | Dry-run scan — see what would be caught without replacing |
+| `vault_stats` | Show total mappings and per-category counts |
+| `configure` | Switch industry profile or toggle detection categories at runtime |
+
+**Claude Desktop / Claude Code config:**
+
+```json
+{
+  "mcpServers": {
+    "cloakpipe": {
+      "command": "cloakpipe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
 ## Detection Layers
 
 | Layer | What it catches | Examples |
@@ -370,12 +426,13 @@ Request Flow:
 
 | Crate | crates.io | Description |
 |-------|-----------|-------------|
-| [`cloakpipe-cli`](crates/cloakpipe-cli/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-cli?style=flat-square)](https://crates.io/crates/cloakpipe-cli) | CLI binary (`start`, `test`, `stats`, `init`, `tree`, `vector`) |
-| [`cloakpipe-core`](crates/cloakpipe-core/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-core?style=flat-square)](https://crates.io/crates/cloakpipe-core) | Detection, pseudonymization, vault (file + SQLite), rehydration |
+| [`cloakpipe-cli`](crates/cloakpipe-cli/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-cli?style=flat-square)](https://crates.io/crates/cloakpipe-cli) | CLI binary (`start`, `test`, `stats`, `init`, `setup`, `mcp`, `tree`, `vector`) |
+| [`cloakpipe-core`](crates/cloakpipe-core/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-core?style=flat-square)](https://crates.io/crates/cloakpipe-core) | Detection, pseudonymization, vault (file + SQLite), rehydration, industry profiles |
 | [`cloakpipe-proxy`](crates/cloakpipe-proxy/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-proxy?style=flat-square)](https://crates.io/crates/cloakpipe-proxy) | Axum HTTP proxy (chat completions + embeddings) |
 | [`cloakpipe-audit`](crates/cloakpipe-audit/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-audit?style=flat-square)](https://crates.io/crates/cloakpipe-audit) | Audit logging (JSONL + SQLite) with rotation |
 | [`cloakpipe-tree`](crates/cloakpipe-tree/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-tree?style=flat-square)](https://crates.io/crates/cloakpipe-tree) | CloakTree: vectorless document retrieval |
 | [`cloakpipe-vector`](crates/cloakpipe-vector/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-vector?style=flat-square)](https://crates.io/crates/cloakpipe-vector) | ADCPE: distance-preserving vector encryption |
+| [`cloakpipe-mcp`](crates/cloakpipe-mcp/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-mcp?style=flat-square)](https://crates.io/crates/cloakpipe-mcp) | MCP server for agentic integrations |
 | [`cloakpipe-local`](crates/cloakpipe-local/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-local?style=flat-square)](https://crates.io/crates/cloakpipe-local) | Fully local RAG mode (planned) |
 
 ## Roadmap
@@ -386,8 +443,9 @@ Request Flow:
 | v0.2 | CloakTree — vectorless, reasoning-based retrieval for structured documents | **Released** |
 | v0.3 | ONNX NER, SQLite vault/audit, multi-user support | **Released** |
 | v0.4 | Distance-preserving vector encryption (ADCPE) | **Released** |
-| v0.5 | Fully local mode with zero external API calls | Planned |
-| v0.6 | TEE support (AWS Nitro Enclaves, Intel TDX) | Planned |
+| v0.5 | Industry profiles, MCP server for agentic integrations, guided setup wizard | **Released** |
+| v0.6 | Fully local mode with zero external API calls | Planned |
+| v0.7 | TEE support (AWS Nitro Enclaves, Intel TDX) | Planned |
 
 ## Running Tests
 
@@ -395,7 +453,7 @@ Request Flow:
 cargo test
 ```
 
-45 tests covering vault encryption, multi-layer detection, pseudonymization roundtrips, streaming rehydration, SQLite vault/audit, ADCPE vector encryption, and end-to-end proxy behavior.
+57 tests covering vault encryption, multi-layer detection, pseudonymization roundtrips, streaming rehydration, SQLite vault/audit, ADCPE vector encryption, industry profiles, MCP server tools, and end-to-end proxy behavior.
 
 ## Security
 
