@@ -144,6 +144,7 @@ The same entity **always maps to the same token** across documents, queries, and
 - **Audit logging** -- Structured JSONL logs for compliance (metadata only, never raw values)
 - **Industry profiles** -- Pre-tuned detection for legal, healthcare, fintech; guided setup wizard
 - **MCP server** -- Expose privacy tools to AI agents (Claude, Cursor, custom harnesses)
+- **Admin dashboard** -- Privacy-aware chat UI, detection feed, compliance audit, policy management (local-first via PowerSync)
 - **Single binary** -- No Docker, no Python, no microservices. Deploy in seconds
 - **<5ms overhead** -- Rust-native, sits in the hot path without you noticing
 
@@ -464,6 +465,24 @@ Request Flow:
 | [`cloakpipe-vector`](crates/cloakpipe-vector/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-vector?style=flat-square)](https://crates.io/crates/cloakpipe-vector) | ADCPE: distance-preserving vector encryption |
 | [`cloakpipe-mcp`](crates/cloakpipe-mcp/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-mcp?style=flat-square)](https://crates.io/crates/cloakpipe-mcp) | MCP server for agentic integrations |
 | [`cloakpipe-local`](crates/cloakpipe-local/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-local?style=flat-square)](https://crates.io/crates/cloakpipe-local) | Fully local RAG mode (planned) |
+| [`dashboard`](dashboard/) | — | Admin UI: privacy chat, detection feed, compliance, policies (React + PowerSync) |
+
+## Dashboard
+
+CloakPipe includes an admin dashboard with a privacy-aware chat interface. The chat detects PII in your browser, pseudonymizes it, and calls the LLM directly — no proxy setup required.
+
+```bash
+cd dashboard
+npm install
+npm run dev
+# Opens at http://localhost:5173
+```
+
+Runs in demo mode by default with seeded data. Add your OpenAI/Anthropic API key in Settings to start chatting.
+
+**Pages:** Chat (with live Privacy Shield) · Overview · Detection Feed · Compliance & Audit · Policies · Instances · Settings
+
+Built with React, TypeScript, Tailwind CSS, and [PowerSync](https://www.powersync.com/) for local-first SQLite. See [`dashboard/README.md`](dashboard/README.md) for full documentation.
 
 ## Roadmap
 
@@ -475,7 +494,8 @@ Request Flow:
 | v0.4 | Distance-preserving vector encryption (ADCPE) | **Released** |
 | v0.5 | Industry profiles, MCP server for agentic integrations, guided setup wizard | **Released** |
 | v0.6 | Fuzzy entity resolution — Jaro-Winkler matching, alias groups | **Released** |
-| v0.7 | TEE support (AWS Nitro Enclaves, Intel TDX) | Planned |
+| v0.7 | Admin dashboard — privacy chat, detection feed, compliance, local-first PowerSync | **Released** |
+| v0.8 | TEE support (AWS Nitro Enclaves, Intel TDX) | Planned |
 
 ## Running Tests
 
