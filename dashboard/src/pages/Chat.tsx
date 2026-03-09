@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Send, Plus, Shield, Eye, MessageSquare, ChevronRight, AlertCircle, Database } from 'lucide-react'
 import { usePowerSync, useQuery } from '@powersync/react'
 import { pseudonymize, rehydrate, createVault, type TokenVault, type DetectedEntity } from '../lib/cloakpipe'
-import { search, buildContextPrompt, type Chunk } from '../lib/retrieval'
+import { search, buildContextPrompt, embedQuery, type Chunk, type EmbeddingConfig } from '../lib/retrieval'
 
 interface Message {
   id: string
@@ -68,6 +68,10 @@ export function Chat() {
   const { data: knowledgeBases } = useQuery<{ id: string; name: string; document_count: number; chunk_count: number }>(
     `SELECT id, name, document_count, chunk_count FROM knowledge_bases WHERE org_id = ? ORDER BY name ASC`,
     ['org-001']
+  )
+
+  const { data: embedKeyRows } = useQuery<{ provider: string; api_key: string; model: string }>(
+    `SELECT provider, api_key, model FROM embedding_keys ORDER BY created_at DESC LIMIT 1`
   )
 
   const apiKey = llmKeys?.[0]?.api_key || ''
@@ -160,16 +164,33 @@ export function Chat() {
     if (selectedKb) {
       const rows = await db.getAll<{
         id: string; doc_id: string; content: string; pseudonymized_content: string;
-        chunk_index: number; page_number: number
-      }>(`SELECT id, doc_id, content, pseudonymized_content, chunk_index, page_number FROM kb_chunks WHERE kb_id = ?`, [selectedKb])
+        chunk_index: number; page_number: number; embedding: string | null
+      }>(`SELECT id, doc_id, content, pseudonymized_content, chunk_index, page_number, embedding FROM kb_chunks WHERE kb_id = ?`, [selectedKb])
 
       const chunks: Chunk[] = rows.map(r => ({
         id: r.id, docId: r.doc_id, content: r.content,
         pseudonymizedContent: r.pseudonymized_content,
         chunkIndex: r.chunk_index, pageNumber: r.page_number,
+        embedding: r.embedding ? JSON.parse(r.embedding) : undefined,
       }))
 
-      const results = search(pseudonymized, chunks, 5)
+      // Generate query embedding if embedding API is configured (pseudonymized query — PII never touches API)
+      let queryEmbedding: number[] | undefined
+      const embedCfg = embedKeyRows?.[0]
+      if (embedCfg?.api_key && chunks.some(c => c.embedding)) {
+        try {
+          const config: EmbeddingConfig = {
+            provider: embedCfg.provider as EmbeddingConfig['provider'],
+            apiKey: embedCfg.api_key,
+            model: embedCfg.model,
+          }
+          queryEmbedding = await embedQuery(pseudonymized, config)
+        } catch (err) {
+          console.error('Query embedding failed, falling back to keyword search:', err)
+        }
+      }
+
+      const results = search(pseudonymized, chunks, 5, queryEmbedding)
       if (results.length > 0) {
         queryContent = buildContextPrompt(results, pseudonymized)
         setRetrievedContext(results.map(r => r.chunk.pseudonymizedContent || r.chunk.content).join('\n---\n').slice(0, 500))

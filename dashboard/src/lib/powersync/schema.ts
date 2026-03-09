@@ -133,6 +133,15 @@ const kb_chunks = new Table({
   entity_count: column.integer,
   chunk_index: column.integer,
   page_number: column.integer,
+  embedding: column.text, // JSON float array from embedding API
+});
+
+const embedding_keys = new Table({
+  org_id: column.text,
+  provider: column.text, // openai, voyage, gemini
+  api_key: column.text,
+  model: column.text,
+  created_at: column.text,
 });
 
 const chat_instances = new Table({
@@ -165,6 +174,7 @@ export const AppSchema = new Schema({
   knowledge_bases,
   kb_documents,
   kb_chunks,
+  embedding_keys,
   chat_instances,
 });
 

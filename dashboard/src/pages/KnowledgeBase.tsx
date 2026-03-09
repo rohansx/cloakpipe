@@ -1,9 +1,8 @@
-import { useState, useRef } from 'react'
-import { Database, Plus, FileText, Upload, Trash2, Search, Eye, Shield, ChevronRight, X, File, FileType } from 'lucide-react'
+import { useState, useRef, useCallback } from 'react'
+import { Database, Plus, FileText, Upload, Trash2, Search, Eye, Shield, ChevronRight, X, File, FileType, Zap, AlertCircle } from 'lucide-react'
 import { usePowerSync, useQuery } from '@powersync/react'
-import { format } from 'date-fns'
 import { pseudonymize, createVault } from '../lib/cloakpipe'
-import { chunkText, detectPages } from '../lib/retrieval'
+import { chunkText, detectPages, generateEmbeddings, type EmbeddingConfig } from '../lib/retrieval'
 
 interface KnowledgeBaseRow {
   id: string; name: string; description: string; document_count: number;
@@ -29,7 +28,9 @@ export function KnowledgeBase() {
   const [newDesc, setNewDesc] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
+  const [uploadStep, setUploadStep] = useState<'idle' | 'reading' | 'chunking' | 'pii' | 'embedding' | 'saving'>('idle')
   const [searchQuery, setSearchQuery] = useState('')
+  const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: knowledgeBases } = useQuery<KnowledgeBaseRow>(
@@ -51,8 +52,14 @@ export function KnowledgeBase() {
     selectedKb ? [selectedKb] : []
   )
 
+  const { data: embedKeyRows } = useQuery<{ provider: string; api_key: string; model: string }>(
+    `SELECT provider, api_key, model FROM embedding_keys ORDER BY created_at DESC LIMIT 1`
+  )
+
   const selectedKbData = (knowledgeBases || []).find(kb => kb.id === selectedKb)
   const stats = chunkStats?.[0]
+  const embedConfig = embedKeyRows?.[0]
+  const hasEmbeddings = !!embedConfig?.api_key
   const filteredKbs = searchQuery
     ? (knowledgeBases || []).filter(kb => kb.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : (knowledgeBases || [])
@@ -83,17 +90,14 @@ export function KnowledgeBase() {
     setUploading(true)
 
     for (const file of Array.from(files)) {
-      setUploadProgress(`Processing ${file.name}...`)
+      // Step 1: Read file
+      setUploadStep('reading')
+      setUploadProgress(`Reading ${file.name}...`)
+      const content = await file.text()
 
-      let content = ''
-      if (file.type === 'application/pdf') {
-        // For PDFs, read as text (basic extraction — user can integrate pdf.js later)
-        content = await file.text()
-      } else {
-        content = await file.text()
-      }
-
-      // Chunk the document
+      // Step 2: Chunk
+      setUploadStep('chunking')
+      setUploadProgress(`Chunking ${file.name}...`)
       const pages = detectPages(content)
       const allChunks: { content: string; page: number; index: number }[] = []
 
@@ -105,22 +109,62 @@ export function KnowledgeBase() {
         }
       }
 
-      // Save document
-      const docId = crypto.randomUUID()
-      const now = new Date().toISOString()
-      let totalDetections = 0
-
-      // Process chunks with PII detection
-      const vault = createVault()
+      // Step 3: PII scan & pseudonymize
+      setUploadStep('pii')
       setUploadProgress(`Scanning ${file.name} for PII (${allChunks.length} chunks)...`)
+      const vault = createVault()
+      const pseudonymizedChunks: { original: string; pseudonymized: string; entitiesJson: string; entityCount: number; page: number; index: number }[] = []
+      let totalDetections = 0
 
       for (const chunk of allChunks) {
         const { output, entities } = pseudonymize(chunk.content, vault)
         totalDetections += entities.length
+        pseudonymizedChunks.push({
+          original: chunk.content,
+          pseudonymized: output,
+          entitiesJson: JSON.stringify(entities),
+          entityCount: entities.length,
+          page: chunk.page,
+          index: chunk.index,
+        })
+      }
+
+      // Step 4: Generate embeddings (on PSEUDONYMIZED content — PII never touches the API)
+      let embeddings: number[][] | null = null
+      if (hasEmbeddings) {
+        setUploadStep('embedding')
+        setUploadProgress(`Generating embeddings for ${file.name} (${pseudonymizedChunks.length} chunks)...`)
+        try {
+          const config: EmbeddingConfig = {
+            provider: embedConfig!.provider as EmbeddingConfig['provider'],
+            apiKey: embedConfig!.api_key,
+            model: embedConfig!.model,
+          }
+          embeddings = await generateEmbeddings(
+            pseudonymizedChunks.map(c => c.pseudonymized),
+            config,
+            (done, total) => setUploadProgress(`Embedding ${file.name}: ${done}/${total} chunks...`)
+          )
+        } catch (err) {
+          console.error('Embedding error:', err)
+          setUploadProgress(`Embedding failed, using keyword search for ${file.name}`)
+          // Continue without embeddings — falls back to TF-IDF
+        }
+      }
+
+      // Step 5: Save to database
+      setUploadStep('saving')
+      setUploadProgress(`Saving ${file.name}...`)
+      const docId = crypto.randomUUID()
+      const now = new Date().toISOString()
+
+      for (let i = 0; i < pseudonymizedChunks.length; i++) {
+        const chunk = pseudonymizedChunks[i]
+        const embedding = embeddings?.[i] ? JSON.stringify(embeddings[i]) : null
 
         await db.execute(
-          `INSERT INTO kb_chunks (id, doc_id, kb_id, content, pseudonymized_content, entities_json, entity_count, chunk_index, page_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [crypto.randomUUID(), docId, selectedKb, chunk.content, output, JSON.stringify(entities), entities.length, chunk.index, chunk.page]
+          `INSERT INTO kb_chunks (id, doc_id, kb_id, content, pseudonymized_content, entities_json, entity_count, chunk_index, page_number, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [crypto.randomUUID(), docId, selectedKb, chunk.original, chunk.pseudonymized, chunk.entitiesJson, chunk.entityCount, chunk.index, chunk.page, embedding]
         )
       }
 
@@ -129,7 +173,6 @@ export function KnowledgeBase() {
         [docId, selectedKb, 'org-001', file.name, file.type || 'text/plain', content, file.size, allChunks.length, totalDetections, now]
       )
 
-      // Update KB stats
       await db.execute(
         `UPDATE knowledge_bases SET document_count = document_count + 1, chunk_count = chunk_count + ?, total_detections = total_detections + ?, updated_at = ? WHERE id = ?`,
         [allChunks.length, totalDetections, now, selectedKb]
@@ -138,6 +181,7 @@ export function KnowledgeBase() {
 
     setUploading(false)
     setUploadProgress('')
+    setUploadStep('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -151,10 +195,36 @@ export function KnowledgeBase() {
     )
   }
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files)
+    }
+  }, [selectedKb, hasEmbeddings])
+
   function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  const STEP_LABELS: Record<string, string> = {
+    reading: 'Reading file',
+    chunking: 'Splitting into chunks',
+    pii: 'Scanning for PII',
+    embedding: 'Generating embeddings',
+    saving: 'Saving to database',
   }
 
   return (
@@ -326,42 +396,95 @@ export function KnowledgeBase() {
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-[var(--primary)]">
                   <Shield className="w-3 h-3" />
-                  <span className="font-mono">{stats?.total_entities || 0}</span> PII entities detected
+                  <span className="font-mono">{stats?.total_entities || 0}</span> PII detected
+                </div>
+                <div className={`flex items-center gap-1.5 text-xs ${hasEmbeddings ? 'text-[var(--success)]' : 'text-[var(--muted-foreground)]'}`}>
+                  <Zap className="w-3 h-3" />
+                  {hasEmbeddings ? 'Vector search' : 'Keyword search'}
                 </div>
               </div>
 
-              {uploadProgress && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                  <div className="w-2 h-2 bg-[var(--primary)] animate-pulse" />
-                  {uploadProgress}
+              {/* Upload progress */}
+              {uploading && (
+                <div className="mt-3 bg-[var(--background)] border border-[var(--border)] p-3">
+                  <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)] mb-2">
+                    <div className="w-2 h-2 bg-[var(--primary)] animate-pulse" />
+                    {uploadProgress}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(['reading', 'chunking', 'pii', 'embedding', 'saving'] as const).map(step => (
+                      <div key={step} className="flex items-center gap-1">
+                        <div className={`w-1.5 h-1.5 ${
+                          step === uploadStep ? 'bg-[var(--primary)] animate-pulse' :
+                          (['reading', 'chunking', 'pii', 'embedding', 'saving'].indexOf(step) < ['reading', 'chunking', 'pii', 'embedding', 'saving'].indexOf(uploadStep)) ? 'bg-[var(--success)]' :
+                          'bg-[var(--border)]'
+                        }`} />
+                        <span className={`text-[10px] ${step === uploadStep ? 'text-[var(--foreground)]' : 'text-[var(--muted-foreground)]'}`}>
+                          {STEP_LABELS[step]}
+                        </span>
+                        {step !== 'saving' && <ChevronRight className="w-2.5 h-2.5 text-[var(--border)]" />}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* Embedding notice */}
+            {!hasEmbeddings && (
+              <div className="mx-5 mt-4 px-3 py-2 bg-[var(--warning)]/10 border border-[var(--warning)]/20 flex items-center gap-2">
+                <AlertCircle className="w-3.5 h-3.5 text-[var(--warning)] shrink-0" />
+                <span className="text-[11px] text-[var(--muted-foreground)]">
+                  No embedding API configured. Using keyword search (less accurate). Add an embedding key in <span className="text-[var(--foreground)]">Settings</span> for vector search.
+                </span>
+              </div>
+            )}
+
             {/* Privacy notice */}
-            <div className="mx-5 mt-4 px-3 py-2 bg-[var(--primary)]/5 border border-[var(--primary)]/20 flex items-center gap-2">
+            <div className="mx-5 mt-3 px-3 py-2 bg-[var(--primary)]/5 border border-[var(--primary)]/20 flex items-center gap-2">
               <Shield className="w-3.5 h-3.5 text-[var(--primary)] shrink-0" />
               <span className="text-[11px] text-[var(--muted-foreground)]">
-                All documents are scanned for PII on upload. Detected entities are pseudonymized before any LLM sees the content.
+                Documents are <span className="text-[var(--primary)] font-medium">pseudonymized before embedding</span>. PII is replaced with tokens before any content reaches the embedding or LLM API.
               </span>
             </div>
 
-            {/* Document list */}
-            <div className="flex-1 overflow-auto p-5">
+            {/* Document list / Drop zone */}
+            <div
+              className="flex-1 overflow-auto p-5"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {dragOver && (
+                <div className="absolute inset-0 z-40 bg-[var(--primary)]/5 border-2 border-dashed border-[var(--primary)] flex items-center justify-center m-5">
+                  <div className="text-center">
+                    <Upload className="w-8 h-8 text-[var(--primary)] mx-auto mb-2" />
+                    <p className="text-sm text-[var(--primary)] font-medium">Drop files here</p>
+                  </div>
+                </div>
+              )}
+
               {(documents || []).length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-center">
+                <div
+                  className="flex flex-col items-center justify-center h-64 text-center border-2 border-dashed border-[var(--border)] cursor-pointer hover:border-[var(--primary)]/50 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <Upload className="w-8 h-8 text-[var(--muted-foreground)] opacity-30 mb-3" />
-                  <p className="text-sm text-[var(--muted-foreground)]">No documents yet</p>
+                  <p className="text-sm text-[var(--muted-foreground)]">Drop files here or click to upload</p>
                   <p className="text-[11px] text-[var(--muted-foreground)] mt-1">
-                    Upload .txt, .md, .csv, .json, or .pdf files
+                    Supports .txt, .md, .csv, .json, .pdf
                   </p>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--secondary)] text-[var(--foreground)] text-[12px] hover:bg-[var(--border)]"
-                  >
-                    <Upload className="w-3 h-3" />
-                    Upload Files
-                  </button>
+                  <div className="flex items-center gap-3 mt-3 text-[10px] text-[var(--muted-foreground)]">
+                    <span className="px-2 py-0.5 bg-[var(--secondary)]">Upload</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                    <span className="px-2 py-0.5 bg-[var(--secondary)]">Chunk</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                    <span className="px-2 py-0.5 bg-[var(--primary)]/10 text-[var(--primary)]">PII Scan</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                    <span className="px-2 py-0.5 bg-[var(--primary)]/10 text-[var(--primary)]">Embed</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                    <span className="px-2 py-0.5 bg-[var(--secondary)]">Index</span>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -397,7 +520,7 @@ export function KnowledgeBase() {
                               {doc.detection_count}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-[var(--muted-foreground)]">—</span>
+                            <span className="text-[11px] text-[var(--muted-foreground)]">Clean</span>
                           )}
                         </div>
                         <button
@@ -409,6 +532,17 @@ export function KnowledgeBase() {
                       </div>
                     )
                   })}
+
+                  {/* Drop zone below document list */}
+                  <div
+                    className="flex items-center justify-center py-4 border-2 border-dashed border-[var(--border)] cursor-pointer hover:border-[var(--primary)]/50 transition-colors mt-3"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+                      <Upload className="w-3.5 h-3.5" />
+                      Drop more files here or click to upload
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -416,17 +550,19 @@ export function KnowledgeBase() {
             {/* How it works footer */}
             <div className="px-5 pb-4">
               <div className="bg-[var(--card)] border border-[var(--border)] p-4">
-                <h3 className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)] mb-2">How Knowledge Base RAG Works</h3>
+                <h3 className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)] mb-2">Pipeline</h3>
                 <div className="flex items-center gap-3 text-[11px] text-[var(--muted-foreground)]">
                   <span className="px-2 py-0.5 bg-[var(--secondary)]">Upload</span>
                   <ChevronRight className="w-3 h-3" />
-                  <span className="px-2 py-0.5 bg-[var(--secondary)]">Chunk</span>
+                  <span className="px-2 py-0.5 bg-[var(--secondary)]">Chunk (512 chars)</span>
                   <ChevronRight className="w-3 h-3" />
-                  <span className="px-2 py-0.5 bg-[var(--primary)]/10 text-[var(--primary)]">PII Scan</span>
+                  <span className="px-2 py-0.5 bg-[var(--primary)]/10 text-[var(--primary)]">Pseudonymize PII</span>
+                  <ChevronRight className="w-3 h-3" />
+                  <span className={`px-2 py-0.5 ${hasEmbeddings ? 'bg-[var(--success)]/10 text-[var(--success)]' : 'bg-[var(--secondary)]'}`}>
+                    {hasEmbeddings ? 'Embed (vector)' : 'TF-IDF (keyword)'}
+                  </span>
                   <ChevronRight className="w-3 h-3" />
                   <span className="px-2 py-0.5 bg-[var(--secondary)]">Index</span>
-                  <ChevronRight className="w-3 h-3" />
-                  <span className="px-2 py-0.5 bg-[var(--secondary)]">Query</span>
                   <ChevronRight className="w-3 h-3" />
                   <span className="px-2 py-0.5 bg-[var(--primary)]/10 text-[var(--primary)]">Safe RAG</span>
                 </div>
@@ -439,7 +575,7 @@ export function KnowledgeBase() {
             <h2 className="text-lg font-semibold mb-1">Knowledge Base</h2>
             <p className="text-xs text-[var(--muted-foreground)] max-w-sm mb-1">
               Upload documents and build privacy-safe RAG chatbots.
-              Every document is scanned for PII before it reaches an LLM.
+              Every document is pseudonymized before embedding or LLM access.
             </p>
             <p className="text-[10px] text-[var(--muted-foreground)] font-mono mb-4">
               Supports .txt, .md, .csv, .json, .pdf
@@ -451,6 +587,12 @@ export function KnowledgeBase() {
               <Plus className="w-3.5 h-3.5" />
               Create Knowledge Base
             </button>
+
+            {!hasEmbeddings && (
+              <p className="text-[10px] text-[var(--warning)] mt-4">
+                No embedding API configured — add one in Settings for vector search
+              </p>
+            )}
           </div>
         )}
       </div>

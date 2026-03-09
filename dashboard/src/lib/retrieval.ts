@@ -1,6 +1,7 @@
 /**
- * Client-side document chunking and keyword retrieval engine.
- * Uses TF-IDF scoring for relevance ranking without requiring embeddings.
+ * Client-side document chunking and retrieval engine.
+ * Supports both TF-IDF keyword search (fallback) and embedding-based vector search.
+ * All content is pseudonymized BEFORE being sent to any embedding API.
  */
 
 export interface Chunk {
@@ -10,12 +11,127 @@ export interface Chunk {
   pseudonymizedContent: string
   chunkIndex: number
   pageNumber: number
+  embedding?: number[]
 }
 
 export interface RetrievalResult {
   chunk: Chunk
   score: number
 }
+
+export interface EmbeddingConfig {
+  provider: 'openai' | 'voyage' | 'gemini'
+  apiKey: string
+  model: string
+}
+
+// --- Embedding API ---
+
+const EMBEDDING_ENDPOINTS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1/embeddings',
+  voyage: 'https://api.voyageai.com/v1/embeddings',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/embeddings',
+}
+
+const DEFAULT_MODELS: Record<string, string> = {
+  openai: 'text-embedding-3-small',
+  voyage: 'voyage-3-lite',
+  gemini: 'text-embedding-004',
+}
+
+/** Generate embeddings for an array of texts using the configured provider */
+export async function generateEmbeddings(
+  texts: string[],
+  config: EmbeddingConfig,
+  onProgress?: (done: number, total: number) => void
+): Promise<number[][]> {
+  const endpoint = EMBEDDING_ENDPOINTS[config.provider]
+  if (!endpoint) throw new Error(`Unknown embedding provider: ${config.provider}`)
+
+  const batchSize = config.provider === 'voyage' ? 128 : 100
+  const allEmbeddings: number[][] = []
+  let processed = 0
+
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize)
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+    if (config.provider === 'voyage') {
+      headers['Authorization'] = `Bearer ${config.apiKey}`
+    } else if (config.provider === 'gemini') {
+      headers['Authorization'] = `Bearer ${config.apiKey}`
+    } else {
+      headers['Authorization'] = `Bearer ${config.apiKey}`
+    }
+
+    const body: Record<string, unknown> = {
+      model: config.model || DEFAULT_MODELS[config.provider],
+      input: batch,
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Embedding API error (${response.status}): ${error}`)
+    }
+
+    const data = await response.json()
+    const embeddings = data.data
+      .sort((a: { index: number }, b: { index: number }) => a.index - b.index)
+      .map((d: { embedding: number[] }) => d.embedding)
+
+    allEmbeddings.push(...embeddings)
+    processed += batch.length
+    onProgress?.(processed, texts.length)
+  }
+
+  return allEmbeddings
+}
+
+/** Generate embedding for a single query */
+export async function embedQuery(text: string, config: EmbeddingConfig): Promise<number[]> {
+  const [embedding] = await generateEmbeddings([text], config)
+  return embedding
+}
+
+// --- Vector Search ---
+
+/** Cosine similarity between two vectors */
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dotProduct = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom === 0 ? 0 : dotProduct / denom
+}
+
+/** Vector similarity search using embeddings */
+export function vectorSearch(queryEmbedding: number[], chunks: Chunk[], topK = 5): RetrievalResult[] {
+  const results: RetrievalResult[] = chunks
+    .filter(c => c.embedding && c.embedding.length > 0)
+    .map(chunk => ({
+      chunk,
+      score: cosineSimilarity(queryEmbedding, chunk.embedding!),
+    }))
+
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .filter(r => r.score > 0.3) // minimum similarity threshold
+}
+
+// --- TF-IDF Fallback ---
 
 const CHUNK_SIZE = 512
 const CHUNK_OVERLAP = 64
@@ -39,7 +155,6 @@ export function chunkText(text: string, chunkSize = CHUNK_SIZE, overlap = CHUNK_
   while (start < text.length) {
     let end = Math.min(start + chunkSize, text.length)
 
-    // Try to break at sentence boundary
     if (end < text.length) {
       const slice = text.slice(start, end)
       const lastPeriod = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('.\n'), slice.lastIndexOf('?\n'), slice.lastIndexOf('!\n'))
@@ -58,7 +173,6 @@ export function chunkText(text: string, chunkSize = CHUNK_SIZE, overlap = CHUNK_
   return chunks
 }
 
-/** Tokenize text into lowercase terms, removing stop words */
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -67,25 +181,22 @@ function tokenize(text: string): string[] {
     .filter(w => w.length > 1 && !STOP_WORDS.has(w))
 }
 
-/** Compute term frequency for a document */
 function termFrequency(terms: string[]): Map<string, number> {
   const tf = new Map<string, number>()
   for (const term of terms) {
     tf.set(term, (tf.get(term) || 0) + 1)
   }
-  // Normalize by doc length
   for (const [term, count] of tf) {
     tf.set(term, count / terms.length)
   }
   return tf
 }
 
-/** TF-IDF based search across chunks */
-export function search(query: string, chunks: Chunk[], topK = 5): RetrievalResult[] {
+/** TF-IDF keyword search (used when no embedding API is configured) */
+export function keywordSearch(query: string, chunks: Chunk[], topK = 5): RetrievalResult[] {
   const queryTerms = tokenize(query)
   if (queryTerms.length === 0) return []
 
-  // Build IDF from corpus
   const docCount = chunks.length
   const docFreq = new Map<string, number>()
 
@@ -97,7 +208,6 @@ export function search(query: string, chunks: Chunk[], topK = 5): RetrievalResul
     return terms
   })
 
-  // Score each chunk
   const results: RetrievalResult[] = chunks.map((chunk, i) => {
     const tf = termFrequency(chunkTerms[i])
     let score = 0
@@ -110,10 +220,8 @@ export function search(query: string, chunks: Chunk[], topK = 5): RetrievalResul
       score += tfVal * idf
     }
 
-    // Boost for exact phrase match
     const lowerContent = (chunk.pseudonymizedContent || chunk.content).toLowerCase()
-    const lowerQuery = query.toLowerCase()
-    if (lowerContent.includes(lowerQuery)) {
+    if (lowerContent.includes(query.toLowerCase())) {
       score *= 2
     }
 
@@ -126,10 +234,20 @@ export function search(query: string, chunks: Chunk[], topK = 5): RetrievalResul
     .slice(0, topK)
 }
 
-/** Parse page numbers from text content (simple heuristic for PDFs) */
+/** Unified search: uses vector search if embeddings available, falls back to keyword */
+export function search(query: string, chunks: Chunk[], topK = 5, queryEmbedding?: number[]): RetrievalResult[] {
+  const hasEmbeddings = chunks.some(c => c.embedding && c.embedding.length > 0)
+
+  if (hasEmbeddings && queryEmbedding) {
+    return vectorSearch(queryEmbedding, chunks, topK)
+  }
+
+  return keywordSearch(query, chunks, topK)
+}
+
+/** Parse page numbers from text content */
 export function detectPages(text: string): Map<number, string> {
   const pages = new Map<number, string>()
-  // Common page break patterns
   const parts = text.split(/(?:\f|--- ?Page \d+ ?---|\[Page \d+\])/i)
   parts.forEach((part, i) => {
     if (part.trim()) pages.set(i + 1, part.trim())
@@ -143,8 +261,8 @@ export function buildContextPrompt(results: RetrievalResult[], query: string): s
   if (results.length === 0) return query
 
   const context = results
-    .map((r, i) => `[Source ${i + 1}]\n${r.chunk.pseudonymizedContent || r.chunk.content}`)
+    .map((r, i) => `[Source ${i + 1} | Page ${r.chunk.pageNumber}]\n${r.chunk.pseudonymizedContent || r.chunk.content}`)
     .join('\n\n')
 
-  return `Use the following context to answer the question. If the answer isn't in the context, say so.\n\n---\n${context}\n---\n\nQuestion: ${query}`
+  return `Use the following context to answer the question. If the answer isn't in the context, say so. Cite source numbers when possible.\n\n---\n${context}\n---\n\nQuestion: ${query}`
 }
