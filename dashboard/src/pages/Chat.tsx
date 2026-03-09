@@ -63,10 +63,19 @@ export function Chat() {
   )
 
   const apiKey = llmKeys?.[0]?.api_key || ''
+  const savedProvider = llmKeys?.[0]?.provider || ''
+  const availableModels = savedProvider ? MODELS.filter(m => m.provider === savedProvider) : MODELS
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamContent])
+
+  // Auto-select first model when provider changes
+  useEffect(() => {
+    if (availableModels.length > 0 && !availableModels.find(m => m.id === model)) {
+      setModel(availableModels[0].id)
+    }
+  }, [savedProvider])
 
   // Live detection as user types
   useEffect(() => {
@@ -305,7 +314,7 @@ export function Chat() {
             onChange={(e) => setModel(e.target.value)}
             className="w-full px-2 py-1 bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--foreground)] font-mono"
           >
-            {MODELS.map(m => (
+            {availableModels.map(m => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
