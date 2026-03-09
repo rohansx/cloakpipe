@@ -16,7 +16,17 @@ const MODELS = [
   { id: 'gpt-4o', label: 'GPT-4o', provider: 'openai' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'openai' },
   { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet', provider: 'anthropic' },
+  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini' },
+  { id: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro', provider: 'gemini' },
+  { id: 'glm-4-flash', label: 'GLM-4 Flash (Free)', provider: 'glm' },
+  { id: 'glm-4-plus', label: 'GLM-4 Plus', provider: 'glm' },
 ]
+
+const PROVIDER_ENDPOINTS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1/chat/completions',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+  glm: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+}
 
 export function Chat() {
   const db = usePowerSync()
@@ -143,7 +153,7 @@ export function Chat() {
       let fullContent = ''
 
       if (selectedModel?.provider === 'anthropic') {
-        // Anthropic API (non-streaming for simplicity — their SSE format differs)
+        // Anthropic API (non-streaming — their SSE format differs)
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -170,8 +180,9 @@ export function Chat() {
         fullContent = data.content?.[0]?.text || ''
         setStreamContent(fullContent)
       } else {
-        // OpenAI-compatible streaming
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        // OpenAI-compatible streaming (works for OpenAI, Gemini, GLM)
+        const endpoint = PROVIDER_ENDPOINTS[selectedModel?.provider || 'openai']
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

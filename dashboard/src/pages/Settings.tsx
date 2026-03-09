@@ -100,6 +100,8 @@ export function Settings() {
               >
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="glm">GLM (ZhipuAI)</option>
               </select>
             </div>
             <div>
