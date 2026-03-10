@@ -1,0 +1,19 @@
+services:
+  cloakpipe:
+    build: .
+    ports:
+      - "8900:8900"
+    volumes:
+      - cloakpipe-data:/app/data
+      - cloakpipe-audit:/app/audit
+      - cloakpipe-trees:/app/tree_indices
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLOAKPIPE_VAULT_KEY=${CLOAKPIPE_VAULT_KEY}
+      - RUST_LOG=cloakpipe=info,tower_http=info
+    restart: unless-stopped
+
+volumes:
+  cloakpipe-data:
+  cloakpipe-audit:
+  cloakpipe-trees:
