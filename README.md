@@ -137,14 +137,13 @@ The same entity **always maps to the same token** across documents, queries, and
 ## Features
 
 - **Drop-in proxy** -- OpenAI-compatible API; change one URL and your app is protected
-- **Multi-layer detection** -- Regex patterns, financial intelligence, custom TOML rules, optional NER
+- **Multi-layer detection** -- Regex patterns, financial intelligence, identity documents, custom TOML rules, optional NER (BERT or GLiNER)
 - **Consistent pseudonymization** -- Same entity always maps to the same token across sessions
 - **Encrypted vault** -- AES-256-GCM at rest, `zeroize` memory safety for key material
 - **SSE streaming rehydration** -- Token-aware buffering handles pseudonyms split across chunks
 - **Audit logging** -- Structured JSONL logs for compliance (metadata only, never raw values)
 - **Industry profiles** -- Pre-tuned detection for legal, healthcare, fintech; guided setup wizard
 - **MCP server** -- Expose privacy tools to AI agents (Claude, Cursor, custom harnesses)
-- **Admin dashboard** -- Privacy-aware chat UI, detection feed, compliance audit, policy management (local-first via PowerSync)
 - **Single binary** -- No Docker, no Python, no microservices. Deploy in seconds
 - **<5ms overhead** -- Rust-native, sits in the hot path without you noticing
 
@@ -362,6 +361,7 @@ cloakpipe mcp
 | `detect` | Dry-run scan — see what would be caught without replacing |
 | `vault_stats` | Show total mappings and per-category counts |
 | `configure` | Switch industry profile or toggle detection categories at runtime |
+| `session_context` | Get session-aware entity context with coreference resolution |
 
 **Claude Desktop / Claude Code config:**
 
@@ -380,12 +380,75 @@ cloakpipe mcp
 
 | Layer | What it catches | Examples |
 |-------|----------------|----------|
-| **Secrets** | API keys, JWTs, connection strings, tokens | `AKIAIOSFODNN7EXAMPLE`, `eyJhbG...` |
-| **Financial** | Multi-currency amounts, percentages, fiscal dates | `$1.2M`, `Rs 3.4L Cr`, `15.7%`, `Q3 2025` |
-| **Contact** | Emails, phone numbers, IP addresses, internal URLs | `alice@acme.com`, `192.168.1.1` |
+| **Secrets** | API keys (OpenAI, AWS, GitHub), JWTs, connection strings | `sk-proj-...`, `AKIAIOSFODNN7EXAMPLE`, `ghp_...` |
+| **Financial** | Multi-currency amounts (₹, $, €, £, ¥, INR/USD/EUR), percentages, fiscal & natural dates | `$1.2M`, `INR 18,00,000`, `15.7%`, `Q3 2025`, `March 31, 2026` |
+| **Identity** | SSN, Aadhaar, PAN | `123-45-6789`, `1234 5678 9012`, `ABCDE1234F` |
+| **Contact** | Emails, phone numbers, IPv4 addresses, URLs | `alice@acme.com`, `+91 98765 43210`, `192.168.1.100` |
 | **Custom** | User-defined TOML patterns | Project codenames, client tiers, internal terms |
-| **NER** | Persons, organizations, locations | ONNX-based (optional, `--features ner`) |
+| **NER** | Persons, organizations, locations (BERT or GLiNER backend) | ONNX-based (optional, `--features ner`) |
 | **Fuzzy Resolution** | Variant spellings, misspellings, nicknames | `Rishikesh` = `Rishi` = `Rishiksh` (typo) |
+
+## Detection Benchmarks
+
+CloakPipe's regex + financial detection engine (without NER) evaluated against 25 annotated samples covering 10 entity categories, 44 ground-truth annotations, negative samples, and adversarial edge cases:
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║           CloakPipe PII Detection Benchmark                ║
+╠══════════════════════════════════════════════════════════════╣
+║ Samples:   25  |  Avg latency: 1505.6 µs/sample           ║
+╠══════════════════════════════════════════════════════════════╣
+║   Category   │    TP │    FP │    FN │    P    R   F1 ║
+╠══════════════════════════════════════════════════════════════╣
+║      aadhaar │     1 │     0 │     0 │ 1.00 1.00 1.00 ║
+║       amount │    11 │     0 │     0 │ 1.00 1.00 1.00 ║
+║         date │     2 │     0 │     0 │ 1.00 1.00 1.00 ║
+║        email │     7 │     0 │     0 │ 1.00 1.00 1.00 ║
+║           ip │     6 │     1 │     0 │ 0.86 1.00 0.92 ║
+║          pan │     1 │     0 │     0 │ 1.00 1.00 1.00 ║
+║        phone │     8 │     0 │     0 │ 1.00 1.00 1.00 ║
+║       secret │     4 │     0 │     0 │ 1.00 1.00 1.00 ║
+║          ssn │     1 │     0 │     0 │ 1.00 1.00 1.00 ║
+║          url │     3 │     0 │     0 │ 1.00 1.00 1.00 ║
+╠══════════════════════════════════════════════════════════════╣
+║      OVERALL │    44 │     1 │     0 │ 0.98 1.00 0.99 ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+**F1 = 0.99** | Precision = 0.98 | Recall = 1.00
+
+Run the benchmark yourself:
+```bash
+cargo run -p cloakpipe-core --example pii_benchmark
+```
+
+## NER Backends
+
+CloakPipe supports two optional NER backends (requires `--features ner`):
+
+| Backend | Model | Use case |
+|---------|-------|----------|
+| **BERT** (default) | `dslim/bert-base-NER` | Fixed IOB2 labels: persons, organizations, locations |
+| **GLiNER** | `knowledgator/gliner-multitask-large-v0.5` | Zero-shot NER: detect any entity type you describe in plain English |
+
+GLiNER is particularly powerful for custom domains -- you define entity labels like "court case number", "medical record", or "vehicle registration" and it detects them without any training:
+
+```toml
+[detection.ner]
+enabled = true
+backend = "gliner"          # or "bert" (default)
+model = "models/gliner.onnx"
+confidence_threshold = 0.5
+entity_types = [
+    "person",
+    "organization",
+    "court case number",
+    "medical record number",
+    "vehicle registration",
+]
+```
+
+Both backends use ONNX Runtime for local, private inference -- no external API calls.
 
 ## Fuzzy Entity Resolution (v0.6)
 
@@ -465,24 +528,6 @@ Request Flow:
 | [`cloakpipe-vector`](crates/cloakpipe-vector/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-vector?style=flat-square)](https://crates.io/crates/cloakpipe-vector) | ADCPE: distance-preserving vector encryption |
 | [`cloakpipe-mcp`](crates/cloakpipe-mcp/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-mcp?style=flat-square)](https://crates.io/crates/cloakpipe-mcp) | MCP server for agentic integrations |
 | [`cloakpipe-local`](crates/cloakpipe-local/) | [![crates.io](https://img.shields.io/crates/v/cloakpipe-local?style=flat-square)](https://crates.io/crates/cloakpipe-local) | Fully local RAG mode (planned) |
-| [`dashboard`](dashboard/) | — | Admin UI: privacy chat, detection feed, compliance, policies (React + PowerSync) |
-
-## Dashboard
-
-CloakPipe includes an admin dashboard with a privacy-aware chat interface. The chat detects PII in your browser, pseudonymizes it, and calls the LLM directly — no proxy setup required.
-
-```bash
-cd dashboard
-npm install
-npm run dev
-# Opens at http://localhost:5173
-```
-
-Runs in demo mode by default with seeded data. Add your OpenAI/Anthropic API key in Settings to start chatting.
-
-**Pages:** Chat (with live Privacy Shield) · Overview · Detection Feed · Compliance & Audit · Policies · Instances · Settings
-
-Built with React, TypeScript, Tailwind CSS, and [PowerSync](https://www.powersync.com/) for local-first SQLite. See [`dashboard/README.md`](dashboard/README.md) for full documentation.
 
 ## Roadmap
 
@@ -494,7 +539,7 @@ Built with React, TypeScript, Tailwind CSS, and [PowerSync](https://www.powersyn
 | v0.4 | Distance-preserving vector encryption (ADCPE) | **Released** |
 | v0.5 | Industry profiles, MCP server for agentic integrations, guided setup wizard | **Released** |
 | v0.6 | Fuzzy entity resolution — Jaro-Winkler matching, alias groups | **Released** |
-| v0.7 | Admin dashboard — privacy chat, detection feed, compliance, local-first PowerSync | **Released** |
+| v0.7 | Context-aware pseudonymization — session tracking, coreference resolution | **Released** |
 | v0.8 | TEE support (AWS Nitro Enclaves, Intel TDX) | Planned |
 
 ## Running Tests
@@ -503,7 +548,7 @@ Built with React, TypeScript, Tailwind CSS, and [PowerSync](https://www.powersyn
 cargo test
 ```
 
-66 tests covering vault encryption, multi-layer detection, pseudonymization roundtrips, streaming rehydration, SQLite vault/audit, ADCPE vector encryption, industry profiles, MCP server tools, and end-to-end proxy behavior.
+104 tests covering vault encryption, multi-layer detection, pseudonymization roundtrips, streaming rehydration, SQLite vault/audit, ADCPE vector encryption, industry profiles, MCP server tools, session tracking, and end-to-end proxy behavior.
 
 ## Security
 
