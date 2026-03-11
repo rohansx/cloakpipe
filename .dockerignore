@@ -1,0 +1,16 @@
+target/
+dashboard/node_modules/
+dashboard/dist/
+.git/
+.github/
+assets/
+docs/
+*.md
+!policies/**
+.env
+.env.*
+*.enc
+audit/
+tree_indices/
+trees/
+vault.enc
