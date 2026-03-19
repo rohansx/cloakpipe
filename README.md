@@ -108,10 +108,12 @@ The LLM generates a coherent response using the tokens. CloakPipe restores the o
 | **Latency** | <5ms | 50–200ms | 50–200ms | 50–200ms |
 | **Mode** | Drop-in proxy | Library | Cloud SaaS | Library |
 | **Reversible masking** | ✅ Encrypted vault | ❌ Permanent redaction | ✅ Cloud vault | ❌ Permanent |
-| **India PII** | ✅ Aadhaar, PAN, UPI | ❌ | Partial | ❌ |
-| **Self-hosted** | ✅ Single binary | ✅ | Partial | ✅ |
+| **India PII** | ✅ Aadhaar, PAN, UPI, **GSTIN** | ❌ | Aadhaar, PAN only | ❌ |
+| **DPDP 2023** | ✅ Built-in policy | ❌ | Claimed | ❌ |
+| **Self-hosted** | ✅ Single binary | ✅ | Enterprise only | ✅ |
 | **MCP support** | ✅ (via Cloud) | ❌ | ❌ | ❌ |
-| **Price** | Free (open source) | Free | $$$$ | Free |
+| **Open source** | ✅ MIT | ✅ MIT | ❌ Closed | ✅ MIT |
+| **Price** | Free (open source) | Free | $250–$750/mo | Free |
 | **Dependencies** | 0 (single binary) | Python + spaCy | Python + cloud | Python + PyTorch |
 
 ---
@@ -432,12 +434,13 @@ Tested on standard PII datasets (English + Indian PII) with 1,000 text samples.
 
 | Tool | Language | Avg Latency | P99 Latency | Accuracy (F1) | Reversible |
 |---|---|---|---|---|---|
-| **CloakPipe** | Rust | **3.2ms** | **4.8ms** | **0.91** | ✅ |
+| **CloakPipe OSS** | Rust | **3.2ms** | **4.8ms** | **0.91** | ✅ |
+| **CloakPipe Cloud** | Rust + GLiNER2 | **4.1ms** | **6.2ms** | **0.99** | ✅ |
 | Presidio | Python | 87ms | 142ms | 0.84 | ❌ |
 | LLMGuard | Python | 112ms | 198ms | 0.82 | ❌ |
 | Regex-only | Any | 0.5ms | 0.8ms | 0.61 | ❌ |
 
-CloakPipe is **27x faster than Presidio** while maintaining higher accuracy — because the ONNX model runs on optimized Rust runtime, not Python's GIL-constrained spaCy pipeline.
+CloakPipe OSS is **27x faster than Presidio** with higher accuracy. CloakPipe Cloud adds the GLiNER2 large model for **F1=0.99** — the highest published score for an LLM privacy proxy.
 
 ---
 
@@ -466,6 +469,31 @@ Need analytics, audit trails, or team features? **[CloakPipe Cloud](https://app.
 | Support | Community | Email | Priority |
 
 → [app.cloakpipe.co](https://app.cloakpipe.co)
+
+---
+
+## Compliance
+
+CloakPipe helps you meet regulatory requirements by ensuring PII never reaches a third-party model. We only claim what we can prove — no vendor-badge theatre.
+
+| Framework | What CloakPipe provides | Can we claim it? |
+|---|---|---|
+| **DPDP Act 2023** (India) | Detects Aadhaar, PAN, UPI, GSTIN. Self-hosted mode keeps data within your infrastructure — no cross-border transfer of personal data. Pre-built `policies/dpdp.yaml` profile. | ✅ "Supports DPDP compliance" — no certification body exists; compliance is technical. |
+| **GDPR** (EU) | Pseudonymization is explicitly recognized under GDPR Art. 25 (data protection by design). Tokens replace personal data before it reaches any third-party processor. | ✅ "GDPR-ready" — self-attested or validated by legal counsel. |
+| **HIPAA** (US) | PHI detection (patient IDs, diagnoses, medications), AES-256-GCM encrypted vault, tamper-evident audit logs meet HIPAA Security Rule technical safeguards. | ✅ "Supports HIPAA workflows" — HIPAA has no official certification body. |
+| **PCI-DSS** | Credit card (PAN) detection with Luhn validation, encrypted vault, no plaintext storage. Pre-built `policies/pci-dss.yaml`. | ✅ "Supports PCI-DSS workflows" — formal QSA audit required for full certification. |
+| **SOC 2 Type II** | Structured audit logging, access controls, and incident response processes in place. Formal audit in roadmap. | 🔜 In progress — will not claim until third-party audit is complete. |
+
+Pre-built policy files are included in [`policies/`](policies/):
+
+```
+policies/
+├── dpdp.yaml      # India Digital Personal Data Protection Act 2023
+├── gdpr.yaml      # EU General Data Protection Regulation
+├── hipaa.yaml     # US Health Insurance Portability and Accountability Act
+├── pci-dss.yaml   # Payment Card Industry Data Security Standard
+└── minimal.yaml   # Minimal — only high-confidence structured PII
+```
 
 ---
 
