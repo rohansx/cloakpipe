@@ -129,6 +129,45 @@ pub async fn proxy_chat_completions(
             (StatusCode::BAD_GATEWAY, format!("Invalid upstream JSON: {}", e))
         })?;
 
+        // --- Response output scanning ---
+        // Detect PII in the raw LLM response. Any entity NOT already in our vault
+        // is leaked/hallucinated PII — redact it before returning to the caller.
+        let vault_read = state.vault.lock().await;
+        let mut leaked_count = 0usize;
+        if let Some(choices) = resp_json.get_mut("choices").and_then(|c| c.as_array_mut()) {
+            for choice in choices.iter_mut() {
+                if let Some(content) = choice
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string())
+                {
+                    if let Ok(mut scan_entities) = state.detector.detect(&content) {
+                        // Remove entities that are already in the vault (expected tokens)
+                        scan_entities.retain(|e| !vault_read.contains_original(&e.original));
+                        if !scan_entities.is_empty() {
+                            leaked_count += scan_entities.len();
+                            tracing::warn!(
+                                request_id = %request_id,
+                                leaked = scan_entities.len(),
+                                "PII leakage detected in LLM response — redacting"
+                            );
+                            // Redact leaked entities by replacing with [REDACTED]
+                            let mut redacted = content.clone();
+                            // Sort descending by start so replacements don't shift offsets
+                            scan_entities.sort_by(|a, b| b.start.cmp(&a.start));
+                            for entity in &scan_entities {
+                                redacted.replace_range(entity.start..entity.end, "[REDACTED]");
+                            }
+                            choice["message"]["content"] = Value::String(redacted);
+                        }
+                    }
+                }
+            }
+        }
+        drop(vault_read);
+        // --- End response scanning ---
+
         let vault = state.vault.lock().await;
         if let Some(choices) = resp_json.get_mut("choices").and_then(|c| c.as_array_mut()) {
             for choice in choices {
@@ -150,6 +189,7 @@ pub async fn proxy_chat_completions(
             .status(200)
             .header("Content-Type", "application/json")
             .header("X-CloakPipe-Request-Id", &request_id)
+            .header("X-CloakPipe-Leaked-Entities", leaked_count.to_string())
             .body(Body::from(serde_json::to_string(&resp_json).unwrap()))
             .unwrap())
     }

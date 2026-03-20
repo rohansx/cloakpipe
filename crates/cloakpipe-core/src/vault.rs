@@ -162,6 +162,57 @@ impl Vault {
         token
     }
 
+    /// Get or create a format-preserving pseudo-token for the given original value.
+    /// Instead of "PHONE_001", generates "+91 55500 00001".
+    pub fn get_or_create_fp(&mut self, original: &str, category: &EntityCategory) -> PseudoToken {
+        // Exact match first
+        if let Some(token) = self.forward.get(original) {
+            return token.clone();
+        }
+
+        // Fuzzy match via resolver
+        if let Some(ref resolver) = self.resolver {
+            let existing: HashMap<String, EntityCategory> = self
+                .forward
+                .iter()
+                .map(|(k, v)| (k.clone(), v.category.clone()))
+                .collect();
+            if let Some(canonical) = resolver.resolve(original, category, &existing) {
+                if let Some(token) = self.forward.get(&canonical) {
+                    let token = token.clone();
+                    self.forward.insert(original.to_string(), token.clone());
+                    return token;
+                }
+            }
+        }
+
+        // New entry — generate format-preserving token
+        let prefix = Self::category_prefix(category);
+        let counter = self.counters.entry(prefix.clone()).or_insert(0);
+        *counter += 1;
+        let id = *counter;
+
+        let fake = crate::format_preserving::generate(original, category, id);
+        let token = PseudoToken {
+            token: fake,
+            category: category.clone(),
+            id,
+        };
+
+        self.forward.insert(original.to_string(), token.clone());
+        self.reverse.insert(
+            token.token.clone(),
+            SensitiveString(original.to_string()),
+        );
+
+        token
+    }
+
+    /// Check if a given original value already has a mapping in the vault.
+    pub fn contains_original(&self, value: &str) -> bool {
+        self.forward.contains_key(value)
+    }
+
     /// Look up the original value for a pseudo-token (for rehydration).
     pub fn lookup(&self, token: &str) -> Option<&str> {
         self.reverse.get(token).map(|s| s.0.as_str())

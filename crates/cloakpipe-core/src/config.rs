@@ -36,6 +36,8 @@ pub struct ProxyConfig {
     pub max_concurrent: usize,
     #[serde(default = "default_mode")]
     pub mode: String,
+    #[serde(default)]
+    pub masking_strategy: crate::MaskingStrategy,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

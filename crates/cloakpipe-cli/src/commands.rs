@@ -599,6 +599,7 @@ fn default_config() -> CloakPipeConfig {
             timeout_seconds: 120,
             max_concurrent: 256,
             mode: "proxy".into(),
+            masking_strategy: cloakpipe_core::MaskingStrategy::Token,
         },
         vault: cloakpipe_core::config::VaultConfig {
             path: "./vault.enc".into(),

@@ -7,6 +7,7 @@
 //! - Response rehydration (including SSE streaming support)
 
 pub mod detector;
+pub mod format_preserving;
 pub mod replacer;
 pub mod resolver;
 pub mod session;
@@ -85,6 +86,17 @@ pub struct PseudonymizedText {
     pub mappings: HashMap<String, String>,
     /// List of all entities that were detected and replaced.
     pub entities: Vec<DetectedEntity>,
+}
+
+/// Strategy for generating pseudo-tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaskingStrategy {
+    /// Standard tokens: PERSON_001, EMAIL_002, etc. (default)
+    #[default]
+    Token,
+    /// Format-preserving: fake phone numbers, emails, Aadhaar, etc.
+    FormatPreserving,
 }
 
 /// Result of rehydrating a response.
