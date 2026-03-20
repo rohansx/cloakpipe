@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Sequence
 
+_LLAMAINDEX_AVAILABLE = False
 try:
     from llama_index.core.llms import (
         LLM,
@@ -28,11 +29,33 @@ try:
         MessageRole,
     )
     from llama_index.core.llms.callbacks import llm_chat_callback, llm_completion_callback
-except ImportError as e:
-    raise ImportError(
-        "llama-index-core is required for CloakPipe LlamaIndex integration.\n"
-        "Install with: pip install 'cloakpipe[llamaindex]'"
-    ) from e
+    _LLAMAINDEX_AVAILABLE = True
+except ImportError:
+    # Provide stubs so the module can be imported without llama-index installed.
+    # The real error is raised when CloakPipeLLM is instantiated.
+    class LLM:  # type: ignore[no-redef]
+        pass
+    def llm_chat_callback():  # type: ignore[misc]
+        return lambda f: f
+    def llm_completion_callback():  # type: ignore[misc]
+        return lambda f: f
+    class ChatMessage:  # type: ignore[no-redef]
+        def __init__(self, role=None, content=""):
+            self.role = role
+            self.content = content
+    class ChatResponse:  # type: ignore[no-redef]
+        def __init__(self, message=None):
+            self.message = message
+    class CompletionResponse:  # type: ignore[no-redef]
+        def __init__(self, text=""):
+            self.text = text
+    class LLMMetadata:  # type: ignore[no-redef]
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+    class MessageRole:  # type: ignore[no-redef]
+        USER = "user"
+        ASSISTANT = "assistant"
 
 import httpx
 
@@ -49,6 +72,8 @@ class CloakPipeLLM(LLM):
     """
     LlamaIndex-compatible LLM that routes all requests through CloakPipe.
 
+    Requires: pip install 'cloakpipe[llamaindex]'
+
     Set as your default LLM via `Settings.llm = CloakPipeLLM(...)` to
     automatically mask PII in all RAG queries, index summarization, and
     agent reasoning steps.
@@ -59,6 +84,14 @@ class CloakPipeLLM(LLM):
     model: str = "gpt-4o"
     temperature: float = 0.1
     max_tokens: int = 1024
+
+    def __init__(self, **kwargs: Any) -> None:
+        if not _LLAMAINDEX_AVAILABLE:
+            raise ImportError(
+                "llama-index-core is required for CloakPipe LlamaIndex integration.\n"
+                "Install with: pip install 'cloakpipe[llamaindex]'"
+            )
+        super().__init__(**kwargs)
 
     @property
     def metadata(self) -> LLMMetadata:
