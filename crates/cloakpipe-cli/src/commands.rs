@@ -630,6 +630,173 @@ fn default_config() -> CloakPipeConfig {
     }
 }
 
+/// RAG pipeline scan — detect and optionally mask PII across files/directories.
+pub async fn scan(
+    config_path: &str,
+    input: String,
+    output: Option<String>,
+    strategy: String,
+    detect_only: bool,
+    min_confidence: f64,
+) -> Result<()> {
+    let config = if std::path::Path::new(config_path).exists() {
+        load_config(config_path)?
+    } else {
+        default_config()
+    };
+
+    let detector = Detector::from_config(&config.detection)?;
+    let masking_strategy = match strategy.as_str() {
+        "format-preserving" | "fp" => cloakpipe_core::MaskingStrategy::FormatPreserving,
+        _ => cloakpipe_core::MaskingStrategy::Token,
+    };
+
+    let input_path = std::path::Path::new(&input);
+    let files = collect_scannable_files(input_path)?;
+
+    if files.is_empty() {
+        println!("No scannable files found in: {}", input);
+        return Ok(());
+    }
+
+    let output_dir = if detect_only {
+        None
+    } else {
+        let dir = output.unwrap_or_else(|| format!("{}-masked", input.trim_end_matches('/')));
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("Cannot create output dir: {}", dir))?;
+        Some(dir)
+    };
+
+    let mut vault = Vault::ephemeral();
+    let mut total_entities = 0usize;
+    let mut total_files = 0usize;
+    let mut file_results: Vec<(String, usize)> = Vec::new();
+
+    println!("Scanning {} files for PII...\n", files.len());
+
+    for file_path in &files {
+        let content = std::fs::read_to_string(file_path)
+            .with_context(|| format!("Cannot read: {}", file_path.display()))?;
+
+        let mut entities = detector.detect(&content)?;
+        entities.retain(|e| e.confidence >= min_confidence);
+
+        let entity_count = entities.len();
+        total_entities += entity_count;
+
+        let rel_path = file_path
+            .strip_prefix(input_path)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .to_string();
+
+        if entity_count > 0 {
+            total_files += 1;
+            file_results.push((rel_path.clone(), entity_count));
+
+            if detect_only {
+                println!("  {} — {} entities", rel_path, entity_count);
+                for e in &entities {
+                    println!(
+                        "    [{:?}] \"{}\" (confidence: {:.0}%, source: {:?})",
+                        e.category,
+                        e.original,
+                        e.confidence * 100.0,
+                        e.source,
+                    );
+                }
+            }
+        }
+
+        if let Some(ref out_dir) = output_dir {
+            entities.sort_by_key(|e| e.start);
+
+            let masked_content = if entities.is_empty() {
+                content.clone()
+            } else {
+                Replacer::pseudonymize_with_strategy(
+                    &content,
+                    &entities,
+                    &mut vault,
+                    masking_strategy,
+                )?
+                .text
+            };
+
+            let out_path = std::path::Path::new(out_dir).join(&rel_path);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&out_path, masked_content)?;
+        }
+    }
+
+    println!("\n--- Scan Summary ---");
+    println!("  Files scanned:  {}", files.len());
+    println!("  Files with PII: {}", total_files);
+    println!("  Total entities: {}", total_entities);
+    println!("  Strategy:       {}", strategy);
+    println!("  Min confidence: {:.0}%", min_confidence * 100.0);
+
+    if let Some(ref out_dir) = output_dir {
+        // Save vault mappings as JSON for rehydration
+        let mappings_path = format!("{}/vault-mappings.json", out_dir);
+        let mappings = vault.reverse_mappings();
+        let json = serde_json::to_string_pretty(&mappings)?;
+        std::fs::write(&mappings_path, json)?;
+
+        println!("  Output dir:     {}", out_dir);
+        println!("  Vault mappings: {}", mappings_path);
+    }
+
+    if !file_results.is_empty() && !detect_only {
+        println!("\n  Files masked:");
+        for (path, count) in &file_results {
+            println!("    {} ({} entities)", path, count);
+        }
+    }
+
+    Ok(())
+}
+
+/// Collect scannable text files from a path (file or directory).
+fn collect_scannable_files(path: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
+    let extensions = ["txt", "md", "json", "csv", "toml", "yaml", "yml", "xml", "html"];
+
+    if path.is_file() {
+        return Ok(vec![path.to_path_buf()]);
+    }
+
+    if !path.is_dir() {
+        bail!("Path does not exist: {}", path.display());
+    }
+
+    let mut files = Vec::new();
+    collect_files_recursive(path, &extensions, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+fn collect_files_recursive(
+    dir: &std::path::Path,
+    extensions: &[&str],
+    files: &mut Vec<std::path::PathBuf>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_recursive(&path, extensions, files)?;
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if extensions.contains(&ext) {
+                files.push(path);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Session management commands — talks to the running proxy's HTTP API.
 pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Result<()> {
     let config = if std::path::Path::new(config_path).exists() {

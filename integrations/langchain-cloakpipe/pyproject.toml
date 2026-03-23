@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "langchain-cloakpipe"
+version = "0.8.0"
+description = "CloakPipe privacy proxy integration for LangChain"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "langchain-openai>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rohansx/cloakpipe"
+Documentation = "https://docs.cloakpipe.co"

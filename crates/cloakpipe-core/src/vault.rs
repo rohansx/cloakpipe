@@ -470,4 +470,34 @@ mod tests {
         let result = Vault::open("/tmp/test.vault", vec![0u8; 16]);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_vault_contains_original() {
+        let mut vault = Vault::ephemeral();
+        assert!(!vault.contains_original("secret@example.com"));
+        vault.get_or_create("secret@example.com", &EntityCategory::Email);
+        assert!(vault.contains_original("secret@example.com"));
+        assert!(!vault.contains_original("other@example.com"));
+    }
+
+    #[test]
+    fn test_vault_format_preserving() {
+        let mut vault = Vault::ephemeral();
+        let t1 = vault.get_or_create_fp("+91 98765 43210", &EntityCategory::PhoneNumber);
+        assert!(t1.token.contains("+91"), "FP phone should keep +91 prefix");
+        // Same value -> same token
+        let t2 = vault.get_or_create_fp("+91 98765 43210", &EntityCategory::PhoneNumber);
+        assert_eq!(t1.token, t2.token);
+        // Different value -> different token
+        let t3 = vault.get_or_create_fp("+91 11111 22222", &EntityCategory::PhoneNumber);
+        assert_ne!(t1.token, t3.token);
+    }
+
+    #[test]
+    fn test_vault_fp_email() {
+        let mut vault = Vault::ephemeral();
+        let t = vault.get_or_create_fp("priya@example.com", &EntityCategory::Email);
+        assert!(t.token.contains("@"), "FP email should contain @");
+        assert!(t.token.ends_with(".invalid"), "FP email should use .invalid TLD");
+    }
 }

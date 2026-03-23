@@ -53,6 +53,23 @@ enum Commands {
         #[command(subcommand)]
         action: SessionCommands,
     },
+    /// Scan files/directories for PII (RAG pre-indexing pipeline)
+    Scan {
+        /// Input file or directory (recursively scans .txt, .md, .json, .csv)
+        input: String,
+        /// Output directory for masked files (default: <input>-masked)
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Masking strategy: token or format-preserving
+        #[arg(long, default_value = "token")]
+        strategy: String,
+        /// Only detect, don't mask (prints report)
+        #[arg(long)]
+        detect_only: bool,
+        /// Minimum confidence threshold (0.0–1.0)
+        #[arg(long, default_value = "0.5")]
+        min_confidence: f64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -157,5 +174,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Tree { action } => commands::tree(&cli.config, action).await,
         Commands::Vector { action } => commands::vector(action).await,
         Commands::Sessions { action } => commands::sessions(&cli.config, action).await,
+        Commands::Scan { input, output, strategy, detect_only, min_confidence } => {
+            commands::scan(&cli.config, input, output, strategy, detect_only, min_confidence).await
+        }
     }
 }

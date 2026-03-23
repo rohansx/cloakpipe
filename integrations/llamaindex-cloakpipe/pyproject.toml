@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llamaindex-cloakpipe"
+version = "0.8.0"
+description = "CloakPipe privacy proxy integration for LlamaIndex"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "llama-index-llms-openai>=0.2.0",
+    "llama-index-embeddings-openai>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rohansx/cloakpipe"
+Documentation = "https://docs.cloakpipe.co"
