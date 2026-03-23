@@ -68,7 +68,7 @@ fn fake_phone(original: &str, id: u32) -> String {
         format!("+1-555-{:03}-{:04}", a, b)
     } else {
         // Generic
-        let a = 555_000_0000u64 + (n * 13 % 9_999_999);
+        let a = 5_550_000_000_u64 + (n * 13 % 9_999_999);
         format!("{:010}", a)
     }
 }

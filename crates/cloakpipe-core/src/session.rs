@@ -61,19 +61,14 @@ impl Default for SessionConfig {
 }
 
 /// Sensitivity level for a session — escalates when decision-making detected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SensitivityLevel {
     /// Normal mode: only catch high-confidence entities.
+    #[default]
     Normal,
     /// Elevated: also catch role references, temporal references, precedent references.
     Elevated,
-}
-
-impl Default for SensitivityLevel {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 /// An entity observed within a session, tracked across messages.
