@@ -1,0 +1,57 @@
+# Copy to cloakpipe.toml
+# IMPORTANT: 0.0.0.0 instead of 127.0.0.1 for Docker
+
+[proxy]
+listen = "0.0.0.0:8900"
+upstream = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 120
+max_concurrent = 256
+mode = "proxy"
+
+[vault]
+path = "/app/data/vault.enc"
+encryption = "aes-256-gcm"
+key_env = "CLOAKPIPE_VAULT_KEY"
+
+[tree]
+enabled = true
+storage_path = "/app/tree_indices/"
+index_model = "gpt-5-mini"
+search_model = "gpt-5-mini"
+max_pages_per_node = 10
+max_tokens_per_node = 20000
+add_node_summaries = true
+pseudonymize_summaries = true
+
+[detection]
+secrets = true
+financial = true
+dates = true
+emails = true
+phone_numbers = true
+ip_addresses = true
+urls_internal = true
+
+[detection.ner]
+enabled = false
+confidence_threshold = 0.85
+entity_types = ["PERSON", "ORG", "LOC"]
+
+[detection.custom]
+patterns = []
+
+[detection.overrides]
+preserve = []
+force = []
+
+[vectors]
+encrypt = false
+
+[audit]
+enabled = true
+log_path = "/app/audit/"
+format = "jsonl"
+retention_days = 90
+log_entities = true
+log_mappings = false
