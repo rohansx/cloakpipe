@@ -31,3 +31,4 @@ models/
 
 # Claude session data
 .claude/
+.reflect/

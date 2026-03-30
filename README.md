@@ -406,6 +406,10 @@ Pre-built policies included: `dpdp.yaml`, `gdpr.yaml`, `hipaa.yaml`, `pci-dss.ya
 
 ## Architecture
 
+<div align="center">
+<img src="cloakpipe_architecture_overview.svg" alt="CloakPipe Architecture Overview" width="680" />
+</div>
+
 CloakPipe is built as a modular Rust workspace with 8 crates:
 
 ```
