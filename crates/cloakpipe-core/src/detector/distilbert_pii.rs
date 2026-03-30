@@ -58,7 +58,10 @@ const LABELS: &[&str] = &[
 /// Map IOB2 label to CloakPipe EntityCategory.
 fn label_to_category(label: &str) -> EntityCategory {
     // Strip B-/I- prefix
-    let entity_type = if label.len() > 2 { &label[2..] } else { label };
+    let entity_type = label
+        .strip_prefix("B-")
+        .or_else(|| label.strip_prefix("I-"))
+        .unwrap_or(label);
     match entity_type {
         "FIRSTNAME" | "LASTNAME" | "MIDDLENAME" | "PREFIX" => EntityCategory::Person,
         "COMPANYNAME" => EntityCategory::Organization,
@@ -240,7 +243,7 @@ impl DistilBertPiiDetector {
                 } else if let Some((ref mut text_val, _start, ref mut end, ref mut conf, ref cat)) =
                     current
                 {
-                    let expected_type = &label[2..];
+                    let expected_type = label.strip_prefix("I-").unwrap_or(label);
                     let current_type = match cat {
                         EntityCategory::Person => matches!(
                             expected_type,

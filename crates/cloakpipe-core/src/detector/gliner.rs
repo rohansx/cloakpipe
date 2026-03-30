@@ -207,7 +207,7 @@ impl GlinerDetector {
 
         // Decode spans into entities
         let entities =
-            self.decode_spans(&logits_data, num_spans, &text_token_offsets, text)?;
+            self.decode_spans(logits_data, num_spans, &text_token_offsets, text)?;
 
         debug!("GLiNER2 detected {} entities", entities.len());
         Ok(entities)
@@ -218,6 +218,7 @@ impl GlinerDetector {
     /// Returns (input_ids, attention_mask, word_mask, text_token_offsets).
     /// `word_mask` marks which tokens belong to the text (1) vs labels (0).
     /// `text_token_offsets` maps text token indices to byte offsets in original text.
+    #[allow(clippy::type_complexity)]
     fn prepare_input(
         &self,
         text: &str,
@@ -333,8 +334,7 @@ impl GlinerDetector {
         let mut span_mask: Vec<f32> = Vec::new();
 
         for (pi, &start) in text_positions.iter().enumerate() {
-            for pj in pi..text_positions.len().min(pi + max_width) {
-                let end = text_positions[pj];
+            for &end in &text_positions[pi..text_positions.len().min(pi + max_width)] {
                 span_idx.push(start as i64);
                 span_idx.push(end as i64);
                 span_mask.push(1.0);
