@@ -21,8 +21,22 @@ class CloakPipeEmbedding(OpenAIEmbedding):
     """
 
     cloakpipe_url: str = "http://localhost:3100"
+    cloud_api_key: str | None = None
 
-    def __init__(self, cloakpipe_url: str = "http://localhost:3100", **kwargs):
+    def __init__(
+        self,
+        cloakpipe_url: str = "http://localhost:3100",
+        cloud_api_key: str | None = None,
+        **kwargs,
+    ):
         kwargs.setdefault("api_base", f"{cloakpipe_url}/v1")
+        if cloud_api_key:
+            headers = kwargs.get("additional_kwargs", {}).get("headers", {})
+            kwargs.setdefault("additional_kwargs", {})
+            kwargs["additional_kwargs"]["headers"] = {
+                **headers,
+                "X-CloakPipe-Key": cloud_api_key,
+            }
         super().__init__(**kwargs)
         self.cloakpipe_url = cloakpipe_url
+        self.cloud_api_key = cloud_api_key

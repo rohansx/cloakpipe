@@ -1,0 +1,37 @@
+[proxy]
+listen = "127.0.0.1:8400"
+upstream = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 120
+max_concurrent = 256
+mode = "proxy"
+
+[vault]
+path = "./vault.enc"
+encryption = "aes-256-gcm"
+key_env = "CLOAKPIPE_VAULT_KEY"
+
+[detection]
+secrets = true
+financial = true
+dates = true
+emails = true
+phone_numbers = true
+ip_addresses = true
+urls_internal = true
+
+[detection.ner]
+enabled = true
+backend = "distilbert_pii"
+confidence_threshold = 0.7
+model = "models/distilbert-pii/quantized/model_quantized.onnx"
+
+[detection.custom]
+patterns = [
+  { name = "ssn", regex = "\\d{3}-\\d{2}-\\d{4}", category = "SSN" },
+  { name = "aadhaar", regex = "\\d{4}\\s\\d{4}\\s\\d{4}", category = "AADHAAR" },
+  { name = "pan", regex = "[A-Z]{5}\\d{4}[A-Z]", category = "PAN" },
+]
+
+[audit]
+enabled = false

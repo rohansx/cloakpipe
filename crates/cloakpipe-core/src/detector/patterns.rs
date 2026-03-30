@@ -90,6 +90,28 @@ impl PatternDetector {
             _name: "pan".into(),
         });
 
+        // Employee / member / policy IDs with common prefixes
+        // Matches: EMP-2019-4471, INS-2026-78432, WF-2019-445821, FM-2026-11847, etc.
+        rules.push(PatternRule {
+            regex: Regex::new(r"\b(?i:EMP|INS|WF|FM|ANT|SH|MRN|TN|CP|HR|POL|CLM|REF|ACCT|MBR|HO)[-–]\d[\w-]{3,}\b")?,
+            category: EntityCategory::Custom("ID_NUMBER".into()),
+            _name: "prefixed_id".into(),
+        });
+
+        // License / certificate numbers with prefix (CRC-1330841, NMLS #1847293, etc.)
+        rules.push(PatternRule {
+            regex: Regex::new(r"\b(?:CRC|NMLS|NPI|DEA|LPC|BAR|LIC)[-–#\s]*\d{4,}\b")?,
+            category: EntityCategory::Custom("LICENSE_NUMBER".into()),
+            _name: "license_number".into(),
+        });
+
+        // State/professional license with hash prefix (#TX-28491, #GA-12847)
+        rules.push(PatternRule {
+            regex: Regex::new(r"#[A-Z]{2}-\d{4,}")?,
+            category: EntityCategory::Custom("LICENSE_NUMBER".into()),
+            _name: "state_license".into(),
+        });
+
         if config.phone_numbers {
             // Tighter phone regex: requires country code or area code pattern,
             // minimum 7 digits total, won't match bare 4-digit numbers or IPs

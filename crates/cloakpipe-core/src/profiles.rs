@@ -43,17 +43,24 @@ impl IndustryProfile {
                 financial: true,
                 dates: true,
                 emails: true,
-                phone_numbers: false,
-                ip_addresses: false,
-                urls_internal: false,
-                ner: NerConfig::default(),
+                phone_numbers: true,
+                ip_addresses: true,
+                urls_internal: true,
+                ner: NerConfig {
+                    enabled: true,
+                    backend: NerBackend::GlinerPii,
+                    model: None,
+                    confidence_threshold: 0.4,
+                    entity_types: Vec::new(),
+                    sidecar_url: "http://127.0.0.1:9111".into(),
+                },
                 custom: CustomConfig::default(),
                 overrides: OverrideConfig::default(),
                 resolver: Default::default(),
             },
             Self::Legal => DetectionConfig {
                 secrets: true,
-                financial: false, // Legal docs need numeric reasoning (settlement amounts, etc.)
+                financial: true,
                 dates: true,
                 emails: true,
                 phone_numbers: true,
@@ -61,13 +68,11 @@ impl IndustryProfile {
                 urls_internal: false,
                 ner: NerConfig {
                     enabled: true,
-                    backend: NerBackend::default(),
+                    backend: NerBackend::GlinerPii,
                     model: None,
-                    confidence_threshold: 0.85,
-                    entity_types: vec![
-                        "PERSON".into(),
-                        "ORGANIZATION".into(),
-                    ],
+                    confidence_threshold: 0.4,
+                    entity_types: Vec::new(),
+                    sidecar_url: "http://127.0.0.1:9111".into(),
                 },
                 custom: CustomConfig {
                     patterns: legal_patterns(),
@@ -85,7 +90,7 @@ impl IndustryProfile {
             },
             Self::Healthcare => DetectionConfig {
                 secrets: true,
-                financial: false,
+                financial: true,
                 dates: true,
                 emails: true,
                 phone_numbers: true,
@@ -93,14 +98,11 @@ impl IndustryProfile {
                 urls_internal: false,
                 ner: NerConfig {
                     enabled: true,
-                    backend: NerBackend::default(),
+                    backend: NerBackend::GlinerPii,
                     model: None,
-                    confidence_threshold: 0.80,
-                    entity_types: vec![
-                        "PERSON".into(),
-                        "ORGANIZATION".into(),
-                        "LOCATION".into(),
-                    ],
+                    confidence_threshold: 0.4,
+                    entity_types: Vec::new(),
+                    sidecar_url: "http://127.0.0.1:9111".into(),
                 },
                 custom: CustomConfig {
                     patterns: healthcare_patterns(),
@@ -282,29 +284,30 @@ mod tests {
         assert!(config.secrets);
         assert!(config.financial);
         assert!(config.emails);
-        assert!(!config.phone_numbers);
-        assert!(!config.ner.enabled);
+        assert!(config.phone_numbers);
+        assert!(config.ner.enabled);
+        assert!(matches!(config.ner.backend, NerBackend::GlinerPii));
         assert!(config.custom.patterns.is_empty());
     }
 
     #[test]
     fn test_legal_profile() {
         let config = IndustryProfile::Legal.detection_config();
-        assert!(!config.financial); // Legal needs numeric reasoning
+        assert!(config.financial);
         assert!(config.phone_numbers);
         assert!(config.ner.enabled);
+        assert!(matches!(config.ner.backend, NerBackend::GlinerPii));
         assert!(!config.custom.patterns.is_empty());
-        // Should have case number patterns
         assert!(config.custom.patterns.iter().any(|p| p.name == "case_number"));
-        // Should preserve court names
         assert!(config.overrides.preserve.contains(&"Supreme Court".to_string()));
     }
 
     #[test]
     fn test_healthcare_profile() {
         let config = IndustryProfile::Healthcare.detection_config();
-        assert!(!config.financial);
+        assert!(config.financial);
         assert!(config.ner.enabled);
+        assert!(matches!(config.ner.backend, NerBackend::GlinerPii));
         assert!(config.custom.patterns.iter().any(|p| p.name == "mrn"));
         assert!(config.custom.patterns.iter().any(|p| p.name == "npi"));
         assert!(config.overrides.preserve.contains(&"FDA".to_string()));

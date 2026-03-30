@@ -3,4 +3,4 @@
 from .client import CloakPipeClient
 
 __all__ = ["CloakPipeClient"]
-__version__ = "0.8.0"
+__version__ = "0.9.0"

@@ -84,6 +84,12 @@ pub enum NerBackend {
     #[default]
     Bert,
     Gliner,
+    /// nvidia/gliner-PII via Python sidecar (no ONNX deps required).
+    #[serde(alias = "gliner-pii", alias = "gliner_pii")]
+    GlinerPii,
+    /// DistilBERT PII — 63MB ONNX model, 33 entity types, runs on any CPU.
+    #[serde(alias = "distilbert-pii", alias = "distilbert_pii")]
+    DistilBertPii,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -97,7 +103,12 @@ pub struct NerConfig {
     pub confidence_threshold: f64,
     #[serde(default)]
     pub entity_types: Vec<String>,
+    /// URL of the GLiNER-PII sidecar server (for GlinerPii backend).
+    #[serde(default = "default_sidecar_url")]
+    pub sidecar_url: String,
 }
+
+fn default_sidecar_url() -> String { "http://127.0.0.1:9111".into() }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct CustomConfig {

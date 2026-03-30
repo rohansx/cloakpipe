@@ -16,6 +16,8 @@ class CloakPipeClient:
         base_url: URL of your CloakPipe proxy (e.g. "http://localhost:3100").
         api_key: Your upstream LLM API key. CloakPipe passes this through.
         token: Optional CloakPipe Cloud JWT token (for cloud features like batch detect).
+        cloud_api_key: Optional CloakPipe Cloud API key (``cp_xxx``).
+            When provided, sent as ``X-CloakPipe-Key`` header.
         timeout: Request timeout in seconds.
 
     Example::
@@ -33,11 +35,13 @@ class CloakPipeClient:
         base_url: str = "http://localhost:3100",
         api_key: str = "",
         token: str | None = None,
+        cloud_api_key: str | None = None,
         timeout: float = 60.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.token = token
+        self.cloud_api_key = cloud_api_key
         self._client = httpx.Client(timeout=timeout)
 
     def _headers(self) -> dict[str, str]:
@@ -47,6 +51,8 @@ class CloakPipeClient:
         }
         if self.token:
             h["X-CloakPipe-Token"] = self.token
+        if self.cloud_api_key:
+            h["X-CloakPipe-Key"] = self.cloud_api_key
         return h
 
     def chat(
@@ -102,6 +108,136 @@ class CloakPipeClient:
         )
         response.raise_for_status()
         return response.json()
+
+    def _cloud_headers(self) -> dict[str, str]:
+        """Headers for cloud API endpoints (JWT auth)."""
+        headers: dict[str, str] = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        if self.cloud_api_key:
+            headers["X-CloakPipe-Key"] = self.cloud_api_key
+        return headers
+
+    def redact_document(
+        self, file_path: str, profile: str = "general", mode: str = "redact"
+    ) -> dict:
+        """Upload a document for PII detection and redaction.
+
+        Args:
+            file_path: Path to file (PDF, CSV, TXT, JSON, MD).
+            profile: Detection profile (general, fintech, healthcare, legal).
+            mode: "redact" or "detect_only".
+
+        Returns:
+            Dict with redacted_text, entities, format, pages, rows, byte_size.
+        """
+        import os
+
+        filename = os.path.basename(file_path)
+        with open(file_path, "rb") as f:
+            files = {"file": (filename, f)}
+            data = {"profile": profile, "mode": mode}
+            resp = self._client.post(
+                f"{self.base_url}/api/v1/documents/redact",
+                files=files,
+                data=data,
+                headers=self._cloud_headers(),
+            )
+        resp.raise_for_status()
+        return resp.json()
+
+    def redact_document_bytes(
+        self,
+        data: bytes,
+        filename: str,
+        profile: str = "general",
+        mode: str = "redact",
+    ) -> dict:
+        """Upload raw bytes for PII detection and redaction.
+
+        Args:
+            data: File contents as bytes.
+            filename: Filename with extension (used for format detection).
+            profile: Detection profile.
+            mode: "redact" or "detect_only".
+
+        Returns:
+            Dict with redacted_text, entities, format, pages, rows, byte_size.
+        """
+        files = {"file": (filename, data)}
+        form_data = {"profile": profile, "mode": mode}
+        resp = self._client.post(
+            f"{self.base_url}/api/v1/documents/redact",
+            files=files,
+            data=form_data,
+            headers=self._cloud_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_guardrails(self) -> list[dict]:
+        """Get current guardrail policies."""
+        resp = self._client.get(
+            f"{self.base_url}/api/guardrails",
+            headers=self._cloud_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def set_guardrails(self, tenant_id: str, **kwargs: Any) -> dict:
+        """Create or update guardrail policy for a tenant.
+
+        Args:
+            tenant_id: Tenant ID to configure.
+            **kwargs: enabled, mode, prompt_injection, jailbreak, toxicity,
+                      pii_leakage_output, injection_threshold,
+                      toxicity_threshold, entropy_threshold.
+
+        Returns:
+            Updated policy dict.
+        """
+        body = {"tenant_id": tenant_id, **kwargs}
+        resp = self._client.post(
+            f"{self.base_url}/api/guardrails",
+            json=body,
+            headers=self._cloud_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_access_policies(self) -> list[dict]:
+        """Get RBAC access policies."""
+        resp = self._client.get(
+            f"{self.base_url}/api/policies",
+            headers=self._cloud_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def create_access_policy(
+        self, tenant_id: str, role_name: str, unmask_categories: list[str]
+    ) -> dict:
+        """Create an RBAC access policy.
+
+        Args:
+            tenant_id: Tenant ID.
+            role_name: Role name (e.g. "finance", "support", "auditor").
+            unmask_categories: List of PII categories this role can see unmasked.
+
+        Returns:
+            Created policy dict.
+        """
+        resp = self._client.post(
+            f"{self.base_url}/api/policies",
+            json={
+                "tenant_id": tenant_id,
+                "role_name": role_name,
+                "unmask_categories": unmask_categories,
+            },
+            headers=self._cloud_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def health(self) -> bool:
         """Check if the CloakPipe proxy is running."""

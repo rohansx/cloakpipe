@@ -14,6 +14,10 @@ pub mod custom;
 pub mod ner;
 #[cfg(feature = "ner")]
 pub mod gliner;
+#[cfg(feature = "gliner-pii")]
+pub mod gliner_pii;
+#[cfg(feature = "ner")]
+pub mod distilbert_pii;
 
 #[cfg(feature = "ner")]
 use crate::config::NerBackend;
@@ -29,6 +33,10 @@ pub struct Detector {
     ner_detector: Option<ner::NerDetector>,
     #[cfg(feature = "ner")]
     gliner_detector: Option<gliner::GlinerDetector>,
+    #[cfg(feature = "gliner-pii")]
+    gliner_pii_detector: Option<gliner_pii::GlinerPiiDetector>,
+    #[cfg(feature = "ner")]
+    distilbert_pii_detector: Option<distilbert_pii::DistilBertPiiDetector>,
     /// Entities to never anonymize (e.g., public companies).
     preserve_list: Vec<String>,
     /// Entities to always anonymize regardless of detection.
@@ -51,6 +59,34 @@ impl Detector {
             #[cfg(feature = "ner")]
             gliner_detector: if config.ner.enabled && matches!(config.ner.backend, NerBackend::Gliner) {
                 Some(gliner::GlinerDetector::new(&config.ner)?)
+            } else {
+                None
+            },
+            #[cfg(feature = "ner")]
+            distilbert_pii_detector: if config.ner.enabled && matches!(config.ner.backend, NerBackend::DistilBertPii) {
+                Some(distilbert_pii::DistilBertPiiDetector::new(&config.ner)?)
+            } else {
+                None
+            },
+            #[cfg(feature = "gliner-pii")]
+            gliner_pii_detector: if config.ner.enabled && matches!(config.ner.backend, crate::config::NerBackend::GlinerPii) {
+                let pii_config = gliner_pii::GlinerPiiConfig {
+                    url: config.ner.sidecar_url.clone(),
+                    threshold: config.ner.confidence_threshold,
+                    timeout_secs: 10,
+                };
+                let detector = gliner_pii::GlinerPiiDetector::new(pii_config);
+                if detector.health_check() {
+                    tracing::info!("GLiNER-PII sidecar connected at {}", config.ner.sidecar_url);
+                    Some(detector)
+                } else {
+                    tracing::warn!(
+                        "GLiNER-PII sidecar not reachable at {}. NER layer disabled. \
+                         Start with: python tools/gliner-pii-server.py",
+                        config.ner.sidecar_url
+                    );
+                    None
+                }
             } else {
                 None
             },
@@ -80,6 +116,18 @@ impl Detector {
             entities.extend(gliner.detect(text)?);
         }
 
+        // Layer 3b: DistilBERT-PII (names, addresses, accounts — runs on any CPU)
+        #[cfg(feature = "ner")]
+        if let Some(ref distilbert) = self.distilbert_pii_detector {
+            entities.extend(distilbert.detect(text)?);
+        }
+
+        // Layer 3c: GLiNER-PII sidecar (names, addresses, orgs)
+        #[cfg(feature = "gliner-pii")]
+        if let Some(ref pii) = self.gliner_pii_detector {
+            entities.extend(pii.detect(text)?);
+        }
+
         // Layer 4: Custom TOML rules
         entities.extend(self.custom_detector.detect(text)?);
 
@@ -107,14 +155,18 @@ impl Detector {
         Ok(entities)
     }
 
-    /// Remove overlapping entity spans, keeping highest confidence.
+    /// Remove overlapping entity spans.
+    /// Prefers: higher confidence > longer span > earlier detection layer.
     fn deduplicate_spans(entities: Vec<DetectedEntity>) -> Vec<DetectedEntity> {
         let mut result: Vec<DetectedEntity> = Vec::new();
         for entity in entities {
             if let Some(last) = result.last() {
                 if entity.start < last.end {
-                    // Overlap: keep the one with higher confidence
-                    if entity.confidence > last.confidence {
+                    // Overlap: prefer higher confidence, then longer span
+                    let replace = entity.confidence > last.confidence
+                        || (entity.confidence == last.confidence
+                            && (entity.end - entity.start) > (last.end - last.start));
+                    if replace {
                         result.pop();
                         result.push(entity);
                     }

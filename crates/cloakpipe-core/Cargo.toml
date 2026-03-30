@@ -28,6 +28,7 @@ tempfile = "3"
 [features]
 default = []
 ner = ["dep:ort", "dep:tokenizers"]
+gliner-pii = ["dep:ureq"]
 
 [dependencies.ort]
 workspace = true
@@ -35,4 +36,9 @@ optional = true
 
 [dependencies.tokenizers]
 workspace = true
+optional = true
+
+[dependencies.ureq]
+version = "2"
+features = ["json"]
 optional = true
