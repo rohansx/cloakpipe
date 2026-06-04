@@ -155,7 +155,7 @@ pub async fn proxy_chat_completions(
                             // Redact leaked entities by replacing with [REDACTED]
                             let mut redacted = content.clone();
                             // Sort descending by start so replacements don't shift offsets
-                            scan_entities.sort_by(|a, b| b.start.cmp(&a.start));
+                            scan_entities.sort_by_key(|b| std::cmp::Reverse(b.start));
                             for entity in &scan_entities {
                                 redacted.replace_range(entity.start..entity.end, "[REDACTED]");
                             }

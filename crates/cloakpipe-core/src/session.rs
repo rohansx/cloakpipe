@@ -344,7 +344,7 @@ impl SessionContext {
         results.extend(self.resolve_possessives(text));
 
         // Deduplicate by position (keep highest confidence)
-        results.sort_by(|a, b| a.0.start.cmp(&b.0.start));
+        results.sort_by_key(|a| a.0.start);
         results.dedup_by(|a, b| {
             if a.0.start == b.0.start {
                 if b.0.confidence > a.0.confidence {

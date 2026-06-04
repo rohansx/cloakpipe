@@ -17,7 +17,7 @@ impl Rehydrator {
         // Sort mappings by token length (longest first) to avoid partial matches.
         // e.g., "ORG_12" should be replaced before "ORG_1"
         let mut sorted_mappings: Vec<_> = mappings.iter().collect();
-        sorted_mappings.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        sorted_mappings.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
 
         for (token, original) in sorted_mappings {
             if result.contains(token.as_str()) {
