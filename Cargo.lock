@@ -635,6 +635,7 @@ version = "0.10.0"
 dependencies = [
  "anyhow",
  "cloakpipe-anchor",
+ "cloakpipe-ledger",
  "ed25519-dalek",
  "hex",
  "serde",
@@ -642,6 +643,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 1.0.69",
+ "uuid",
 ]
 
 [[package]]

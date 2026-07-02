@@ -175,11 +175,15 @@ fn build_anchored_bundle() -> (Bundle, [u8; 32]) {
         format_version: BUNDLE_FORMAT_VERSION,
         tenant_id: "550e8400-e29b-41d4-a716-446655440000".into(),
         created_at: "2026-07-02T10:06:00+00:00".into(),
+        range_start: None,
+        range_end: None,
         records,
         inclusion_proofs,
         batch_heads: vec![verifier_batch_head],
         signer_public_keys: vec![],
         anchor_receipts,
+        manifest: None,
+        policy_packs: vec![],
     };
 
     (bundle, tsa_pubkey)

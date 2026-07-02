@@ -43,12 +43,19 @@ pub const BUNDLE_MAGIC: &str = "cloakpipe.bundle";
 /// History:
 /// - v1: records + batch heads + signatures (M2)
 /// - v2: + Merkle inclusion proofs per record + anchor receipts (M3)
-pub const BUNDLE_FORMAT_VERSION: u32 = 2;
+/// - v3: + signed manifest, policy pack refs, date range, signed-tree-
+///   head index (M4 — auditor pack)
+pub const BUNDLE_FORMAT_VERSION: u32 = 3;
 
 /// The version that introduced Merkle proofs and anchor receipts.
 /// Bundles with version < 2 cannot have these fields; the verifier
 /// accepts them but skips Merkle/anchor checks with a clear warning.
 pub const MIN_BUNDLE_VERSION_FOR_ANCHORS: u32 = 2;
+
+/// The version that introduced the signed manifest. v3+ bundles must
+/// have a [`Manifest`]; v2 bundles may be promoted to v3 by re-
+/// running `export` with `with_manifest = true`.
+pub const MIN_BUNDLE_VERSION_FOR_MANIFEST: u32 = 3;
 
 /// A tenant identifier. Lowercase hyphenated UUID.
 pub type TenantId = String;
@@ -71,6 +78,14 @@ pub struct Bundle {
     pub format_version: u32,
     pub tenant_id: TenantId,
     pub created_at: String,
+    /// Inclusive lower bound on `record.ts` (RFC3339). Optional in
+    /// v2; required in v3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_start: Option<String>,
+    /// Exclusive upper bound on `record.ts`. Optional in v2; required
+    /// in v3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_end: Option<String>,
     pub records: Vec<Record>,
     /// Per-record Merkle inclusion proofs, indexed by record seq.
     /// If a record has no proof, `bundle_inclusion_proofs[seq]` is
@@ -86,6 +101,16 @@ pub struct Bundle {
     /// Receipts are independently verifiable offline.
     #[serde(default)]
     pub anchor_receipts: Vec<AnchorReceiptRef>,
+    /// Signed manifest. Required in v3+. v2 bundles that don't have
+    /// one get accepted but the verifier skips manifest checks with a
+    /// warning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<Manifest>,
+    /// Active policy pack versions (git-shas) for the bundle's
+    /// date range. The verifier checks that every record's
+    /// `policy.pack_version` appears in this list. v3+ only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_packs: Vec<PolicyPackRef>,
 }
 
 /// A single ledger record.
@@ -147,6 +172,54 @@ pub struct InclusionProofRef {
 /// Anchor receipt reference (mirrored from `cloakpipe-anchor` types).
 ///
 /// Two variants:
+/// A reference to an active policy pack. `pack_version` is the git
+/// sha of the pack at the time it was active for the bundle's
+/// range. The producer MUST include every `policy.pack_version`
+/// that appears in any record inside the bundle.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PolicyPackRef {
+    pub pack_id: String,
+    pub pack_version: String, // git sha
+    /// When this version became active (RFC3339 UTC).
+    pub active_from: String,
+    /// When this version was superseded (RFC3339 UTC). `None` for
+    /// the currently-active version.
+    pub active_until: Option<String>,
+}
+
+/// The signed manifest. The signature is over the deterministic
+/// JSON of `manifest_body` (everything except `signature`).
+///
+/// The manifest binds the bundle together: it enumerates the
+/// record-seq range, the batch heads in scope, the anchor receipts
+/// referenced, and the active policy packs. Tampering with any of
+/// these without re-signing the manifest breaks verification.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Manifest {
+    pub bundle_id: String,
+    pub range_start: String,
+    pub range_end: String,
+    pub record_count: u64,
+    pub first_seq: u64,
+    pub last_seq: u64,
+    pub batch_head_ids: Vec<String>,
+    pub anchor_receipt_refs: Vec<String>, // e.g. "tsa:1:42", "log:abc:7"
+    pub policy_pack_versions: Vec<String>, // git shas
+    pub operator: String, // key_id of the signer
+    pub created_at: String,
+    pub signature: ManifestSignature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ManifestSignature {
+    pub key_id: String,
+    pub algorithm: String,
+    pub value: String, // hex(64)
+}
+
+/// Anchor receipt reference (mirrored from `cloakpipe-anchor` types).
+///
+/// Two variants:
 /// - `tsa`: an RFC-3161 timestamp token over the batch head's
 ///   canonical bytes. Verifier checks the TSA signature.
 /// - `log`: an inclusion proof + signed-tree-head from a transparency
@@ -203,7 +276,7 @@ mod tests {
     #[test]
     fn magic_and_version_are_stable() {
         assert_eq!(BUNDLE_MAGIC, "cloakpipe.bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 2);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 3);
     }
 
     #[test]
@@ -223,6 +296,10 @@ mod tests {
             inclusion_proofs: vec![None],
             batch_heads: vec![],
             signer_public_keys: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
         };
         let j = serde_json::to_string(&b).unwrap();

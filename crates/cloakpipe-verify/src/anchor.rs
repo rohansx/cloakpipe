@@ -24,10 +24,11 @@
 //! is logged or printed.
 
 use crate::bundle::{
-    AnchorReceiptRef, BatchHead, Bundle, InclusionProofRef, ProofStepRef,
+    AnchorReceiptRef, BatchHead, Bundle, InclusionProofRef, Manifest,
+    PolicyPackRef, ProofStepRef,
 };
 use ed25519_dalek::{Signature as DalekSig, Verifier as DalekVerifier, VerifyingKey};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -77,6 +78,42 @@ struct SthRef {
     claimed_time: String,
     signature: String,
     pubkey: String,
+}
+
+/// Unsigned view of a manifest. The producer signs over the
+/// deterministic JSON of this struct; the verifier re-serializes
+/// and re-hashes.
+#[derive(Debug, Clone, Serialize)]
+struct UnsignedManifest<'a> {
+    bundle_id: &'a str,
+    range_start: &'a str,
+    range_end: &'a str,
+    record_count: u64,
+    first_seq: u64,
+    last_seq: u64,
+    batch_head_ids: &'a [String],
+    anchor_receipt_refs: &'a [String],
+    policy_pack_versions: &'a [String],
+    operator: &'a str,
+    created_at: &'a str,
+}
+
+impl<'a> From<&'a Manifest> for UnsignedManifest<'a> {
+    fn from(m: &'a Manifest) -> Self {
+        Self {
+            bundle_id: &m.bundle_id,
+            range_start: &m.range_start,
+            range_end: &m.range_end,
+            record_count: m.record_count,
+            first_seq: m.first_seq,
+            last_seq: m.last_seq,
+            batch_head_ids: &m.batch_head_ids,
+            anchor_receipt_refs: &m.anchor_receipt_refs,
+            policy_pack_versions: &m.policy_pack_versions,
+            operator: &m.operator,
+            created_at: &m.created_at,
+        }
+    }
 }/// Compute the canonical subject hash for a batch head — the bytes
 /// the anchor backend signed over (and the verifier re-hashes).
 ///
@@ -706,4 +743,150 @@ mod tests {
         expected.extend_from_slice(b"tsa-1");
         assert_eq!(payload, expected);
     }
+}
+
+/// Verify the manifest: signature, declared counts, batch/anchor
+/// references, and policy pack coverage of every record.
+pub fn verify_manifest(bundle: &Bundle) -> Result<(), ManifestError> {
+    if bundle.format_version < crate::bundle::MIN_BUNDLE_VERSION_FOR_MANIFEST {
+        return Ok(());
+    }
+    let m = bundle
+        .manifest
+        .as_ref()
+        .ok_or(ManifestError::Missing)?;
+    // 1. Look up the operator's public key in the bundle.
+    let pk_hex = bundle
+        .signer_public_keys
+        .iter()
+        .find(|k| k.key_id == m.signature.key_id)
+        .map(|k| k.public_key.clone())
+        .ok_or_else(|| ManifestError::UnknownKey(m.signature.key_id.clone()))?;
+    let pk_bytes = decode_hex_32(&pk_hex)
+        .ok_or_else(|| ManifestError::BadHex(m.signature.key_id.clone()))?;
+    let vk = VerifyingKey::from_bytes(&pk_bytes)
+        .map_err(|_| ManifestError::BadKey(m.signature.key_id.clone()))?;
+    // 2. Re-serialize the unsigned view and verify the signature.
+    let unsigned = UnsignedManifest::from(m);
+    let payload = serde_json::to_vec(&unsigned)
+        .map_err(|_| ManifestError::SerializationFailed)?;
+    let sig_bytes = decode_hex_64(&m.signature.value)
+        .ok_or_else(|| ManifestError::BadHex("signature".into()))?;
+    let sig = DalekSig::from_bytes(&sig_bytes);
+    vk.verify(&payload, &sig)
+        .map_err(|_| ManifestError::SignatureInvalid)?;
+    // 3. Counts and seq range match the bundle.
+    let actual_count = bundle.records.len() as u64;
+    if m.record_count != actual_count {
+        return Err(ManifestError::RecordCountMismatch {
+            got: m.record_count,
+            expected: actual_count,
+        });
+    }
+    let first_seq = bundle.records.first().map(|r| r.seq).unwrap_or(0);
+    let last_seq = bundle.records.last().map(|r| r.seq).unwrap_or(0);
+    if m.first_seq != first_seq {
+        return Err(ManifestError::FirstSeqMismatch {
+            got: m.first_seq,
+            expected: first_seq,
+        });
+    }
+    if m.last_seq != last_seq {
+        return Err(ManifestError::LastSeqMismatch {
+            got: m.last_seq,
+            expected: last_seq,
+        });
+    }
+    // 4. Manifest batch_head_ids must all exist in the bundle.
+    let known_heads: std::collections::BTreeSet<&str> = bundle
+        .batch_heads
+        .iter()
+        .map(|h| h.batch_id.as_str())
+        .collect();
+    for bh in &m.batch_head_ids {
+        if !known_heads.contains(bh.as_str()) {
+            return Err(ManifestError::UnknownBatch(bh.clone()));
+        }
+    }
+    // 5. Manifest anchor_receipt_refs (e.g. "tsa:bid:tsa:42") must
+    //    exist as receipts in the bundle. We match by prefix
+    //    (kind:batch_id).
+    for ar in &m.anchor_receipt_refs {
+        let mut parts = ar.splitn(3, ':');
+        let kind = parts.next().unwrap_or("");
+        let bid = parts.next().unwrap_or("");
+        let found = bundle.anchor_receipts.iter().any(|r| {
+            let r_kind = match r {
+                AnchorReceiptRef::Tsa { .. } => "tsa",
+                AnchorReceiptRef::Log { .. } => "log",
+            };
+            let r_bid = match r {
+                AnchorReceiptRef::Tsa { batch_id, .. } => batch_id.as_str(),
+                AnchorReceiptRef::Log { batch_id, .. } => batch_id.as_str(),
+            };
+            r_kind == kind && r_bid == bid
+        });
+        if !found {
+            return Err(ManifestError::UnknownAnchor(ar.clone()));
+        }
+    }
+    // 6. Every record's policy.pack_version must appear in the
+    //    bundle's policy_packs list (if any record references one).
+    let known_versions: std::collections::BTreeSet<&str> = bundle
+        .policy_packs
+        .iter()
+        .map(|p: &PolicyPackRef| p.pack_version.as_str())
+        .collect();
+    for rec in &bundle.records {
+        let v = extract_policy_pack_version(&rec.canonical_bytes);
+        if let Some(v) = v {
+            if !known_versions.is_empty() && !known_versions.contains(v.as_str()) {
+                return Err(ManifestError::UnknownPolicyPack {
+                    seq: rec.seq,
+                    version: v,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Extract `policy.pack_version` from a record's canonical bytes.
+/// Returns None if the field is not present.
+fn extract_policy_pack_version(canonical: &str) -> Option<String> {
+    // The canonical encoding puts policy fields in parentheses:
+    //   policy=(<pack_id>|<pack_version>|<rule_id>|<decision>)
+    let line = canonical.lines().find(|l| l.starts_with("policy="))?;
+    let inner = line.trim_start_matches("policy=").trim_matches('(').trim_matches(')');
+    let mut parts = inner.splitn(4, '|');
+    parts.next()?; // pack_id
+    Some(parts.next()?.to_string())
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ManifestError {
+    #[error("manifest missing on v3 bundle (required for auditor packs)")]
+    Missing,
+    #[error("manifest signature is invalid")]
+    SignatureInvalid,
+    #[error("manifest signature serialization failed")]
+    SerializationFailed,
+    #[error("manifest key id `{0}` not in `signer_public_keys`")]
+    UnknownKey(String),
+    #[error("signer key `{0}` is not a valid Ed25519 public key")]
+    BadKey(String),
+    #[error("invalid hex in manifest field: {0}")]
+    BadHex(String),
+    #[error("manifest record count `{got}` does not match bundle (`{expected}`)")]
+    RecordCountMismatch { got: u64, expected: u64 },
+    #[error("manifest first_seq `{got}` does not match bundle (`{expected}`)")]
+    FirstSeqMismatch { got: u64, expected: u64 },
+    #[error("manifest last_seq `{got}` does not match bundle (`{expected}`)")]
+    LastSeqMismatch { got: u64, expected: u64 },
+    #[error("manifest references unknown batch head `{0}`")]
+    UnknownBatch(String),
+    #[error("manifest references unknown anchor receipt `{0}`")]
+    UnknownAnchor(String),
+    #[error("record #{seq} references policy pack version `{version}` not in manifest")]
+    UnknownPolicyPack { seq: u64, version: String },
 }

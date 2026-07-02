@@ -130,6 +130,19 @@ fn run(args: &[String]) -> Result<ExitCode> {
                 }
             }
         }
+        "manifest" => {
+            let b = load_bundle(&path)?;
+            match anchor::verify_manifest(&b) {
+                Ok(()) => {
+                    println!("OK  manifest verified");
+                    Ok(ExitCode::from(0))
+                }
+                Err(e) => {
+                    println!("FAIL  {e}");
+                    Ok(ExitCode::from(1))
+                }
+            }
+        }
         "help" | "--help" | "-h" => {
             println!("{}", USAGE);
             Ok(ExitCode::from(0))
@@ -158,6 +171,10 @@ fn run_all_v2(b: &bundle::Bundle) -> Result<AllV2Summary, anyhow::Error> {
     let summary = verify::verify_all(b).map_err(|e| anyhow::anyhow!("{e}"))?;
     let anchors = anchor::verify_anchors(b).map_err(|e| anyhow::anyhow!("{e}"))?;
     let proofs = anchor::verify_inclusion_proofs(b).map_err(|e| anyhow::anyhow!("{e}"))?;
+    // v3 bundles additionally require a manifest check.
+    if b.format_version >= 3 {
+        anchor::verify_manifest(b).map_err(|e| anyhow::anyhow!("{e}"))?;
+    }
     Ok(AllV2Summary {
         records: summary.records,
         signatures: summary.signatures,
@@ -171,11 +188,12 @@ const USAGE: &str = "\
 cloakpipe-verify — standalone auditor for CloakPipe evidence bundles
 
 USAGE:
-  cloakpipe-verify chain   <bundle.json>
-  cloakpipe-verify sigs    <bundle.json>
-  cloakpipe-verify anchors <bundle.json>
-  cloakpipe-verify proofs  <bundle.json>
-  cloakpipe-verify all     <bundle.json>
+  cloakpipe-verify chain    <bundle.json>
+  cloakpipe-verify sigs     <bundle.json>
+  cloakpipe-verify anchors  <bundle.json>
+  cloakpipe-verify proofs   <bundle.json>
+  cloakpipe-verify manifest <bundle.json>
+  cloakpipe-verify all      <bundle.json>
 
 EXITS:
   0   bundle verified

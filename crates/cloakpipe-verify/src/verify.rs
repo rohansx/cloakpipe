@@ -64,6 +64,24 @@ pub enum VerifyError {
     BadAnchorHex(String),
     #[error("invalid RFC3339 timestamp: {0}")]
     BadTimestamp(String),
+    #[error("manifest missing on v3 bundle (required for auditor packs)")]
+    ManifestMissing,
+    #[error("manifest signature is invalid")]
+    ManifestSignatureInvalid,
+    #[error("manifest key id `{0}` not in `signer_public_keys`")]
+    ManifestKeyUnknown(String),
+    #[error("manifest references unknown batch head `{0}`")]
+    ManifestUnknownBatch(String),
+    #[error("manifest references unknown anchor receipt `{0}`")]
+    ManifestUnknownAnchor(String),
+    #[error("manifest record count `{got}` does not match bundle (`{expected}`)")]
+    ManifestRecordCountMismatch { got: u64, expected: u64 },
+    #[error("manifest first_seq `{got}` does not match bundle (`{expected}`)")]
+    ManifestFirstSeqMismatch { got: u64, expected: u64 },
+    #[error("manifest last_seq `{got}` does not match bundle (`{expected}`)")]
+    ManifestLastSeqMismatch { got: u64, expected: u64 },
+    #[error("record #{seq} references policy pack version `{version}` not in manifest")]
+    UnknownPolicyPack { seq: u64, version: String },
 }
 
 /// Validate the bundle's `format` and `format_version` fields. Catches
@@ -289,6 +307,10 @@ mod tests {
             records: vec![],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -306,6 +328,10 @@ mod tests {
             records: vec![r],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -326,6 +352,10 @@ mod tests {
             records: vec![tampered],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -345,6 +375,10 @@ mod tests {
             records: vec![r0, r2],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -365,6 +399,10 @@ mod tests {
             records: vec![r0, r1],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -382,6 +420,10 @@ mod tests {
             records: vec![],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -398,6 +440,10 @@ mod tests {
             records: vec![],
             batch_heads: vec![],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
@@ -426,6 +472,10 @@ mod tests {
                 },
             }],
             inclusion_proofs: vec![],
+            range_start: None,
+            range_end: None,
+            manifest: None,
+            policy_packs: vec![],
             anchor_receipts: vec![],
             signer_public_keys: vec![],
         };

@@ -21,7 +21,9 @@ thiserror = "1"
 
 [dev-dependencies]
 tempfile = "3"
-# Test-only: the M3 gate test constructs an anchored bundle from
-# scratch using the producer crate, then runs the *standalone*
-# verifier against it. The verifier's lib does NOT depend on this.
+# Test-only: the gate tests (M3, M4) construct anchored bundles from
+# scratch using the producer crates, then run the *standalone*
+# verifier against them. The verifier's lib does NOT depend on these.
 cloakpipe-anchor = { path = "../cloakpipe-anchor" }
+cloakpipe-ledger = { path = "../cloakpipe-ledger" }
+uuid = { workspace = true }

@@ -43,6 +43,10 @@ pub struct SignedRecord {
 /// Pluggable signer trait. The default impl is [`Ed25519Signer`].
 pub trait Signer: Send + Sync {
     fn sign(&self, record: &LedgerRecord) -> Signature;
+    /// Sign an arbitrary byte payload. Used for manifest signing
+    /// and other cross-cutting signatures that aren't tied to a
+    /// record.
+    fn sign_bytes(&self, payload: &[u8]) -> [u8; 64];
     fn public_key(&self) -> [u8; 32];
     fn algorithm(&self) -> &'static str;
 }
@@ -75,6 +79,14 @@ impl Signer for Ed25519Signer {
         sig_arr.copy_from_slice(&sig_bytes);
         let pk = self.key.verifying_key().to_bytes();
         Signature::Ed25519 { pk, sig: sig_arr }
+    }
+
+    fn sign_bytes(&self, payload: &[u8]) -> [u8; 64] {
+        let sig = self.key.sign(payload);
+        let sig_bytes = sig.to_bytes();
+        let mut sig_arr = [0u8; 64];
+        sig_arr.copy_from_slice(&sig_bytes);
+        sig_arr
     }
 
     fn public_key(&self) -> [u8; 32] {
