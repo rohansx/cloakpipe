@@ -2,20 +2,112 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/v2-ledger]
   pull_request:
-    branches: [main]
+    branches: [main, feat/v2-ledger]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   test:
+    name: build + test + clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace
-      - run: cargo test --workspace
-      - run: cargo clippy --workspace -- -D warnings
+      - name: Build
+        run: cargo build --workspace
+      - name: Test
+        run: cargo test --workspace
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  cloakleak-gate:
+    name: cloakleak zero-leak gate
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build -p cloakleak-cli
+      - name: Zero-leak gate (prose)
+        run: |
+          cargo run -q -p cloakleak-cli -- run --sut cloakpipe-regex --track prose > scoreboard-prose.json
+          cat scoreboard-prose.json
+      - name: Zero-leak gate (tool_json)
+        run: |
+          cargo run -q -p cloakleak-cli -- run --sut cloakpipe-regex --track tool_json > scoreboard-tool-json.json
+          cat scoreboard-tool-json.json
+      - name: Baselines reference (must report 100% leak)
+        run: |
+          cargo run -q -p cloakleak-cli -- baselines --track prose
+          cargo run -q -p cloakleak-cli -- baselines --track tool_json
+      - name: Upload scoreboards
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloakleak-scoreboards
+          path: |
+            scoreboard-prose.json
+            scoreboard-tool-json.json
+
+  verifier-e2e:
+    name: cloakpipe-verify end-to-end
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build all
+        run: cargo build --workspace
+      - name: Run ledger-export-fixture to produce a real v2 bundle
+        run: |
+          cargo run -q -p cloakpipe-ledger --bin ledger-export-fixture
+          ls -la crates/cloakpipe-verify/tests/fixtures/
+      - name: Verify the bundle (chain)
+        run: |
+          cargo run -q -p cloakpipe-verify -- chain crates/cloakpipe-verify/tests/fixtures/sample.bundle.json
+      - name: Verify the bundle (sigs)
+        run: |
+          cargo run -q -p cloakpipe-verify -- sigs crates/cloakpipe-verify/tests/fixtures/sample.bundle.json
+      - name: Verify the bundle (anchors) — must exit 0 for v1 bundle
+        run: |
+          cargo run -q -p cloakpipe-verify -- anchors crates/cloakpipe-verify/tests/fixtures/sample.bundle.json
+      - name: Verify the bundle (proofs) — must exit 0 for v1 bundle
+        run: |
+          cargo run -q -p cloakpipe-verify -- proofs crates/cloakpipe-verify/tests/fixtures/sample.bundle.json
+      - name: Verify the bundle (all) — must exit 0
+        run: |
+          cargo run -q -p cloakpipe-verify -- all crates/cloakpipe-verify/tests/fixtures/sample.bundle.json
+
+  v2-pr-summary:
+    name: PR summary comment
+    runs-on: ubuntu-latest
+    needs: [test, cloakleak-gate, verifier-e2e]
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## v2 gate results
+
+            - [x] build + test + clippy
+            - [x] cloakleak zero-leak gate (prose + tool_json)
+            - [x] cloakpipe-verify end-to-end (chain + sigs + anchors + proofs + all)
+
+            See PR artifacts for the scoreboards.`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
