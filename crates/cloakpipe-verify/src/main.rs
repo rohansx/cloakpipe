@@ -5,6 +5,7 @@
 //! ```text
 //! cloakpipe-verify chain   <bundle.json>   # hash chain unbroken, no seq gaps
 //! cloakpipe-verify sigs    <bundle.json>   # Ed25519 batch-head signatures valid
+//! cloakpipe-verify anchors <bundle.json>   # TSA + log receipts valid offline
 //! cloakpipe-verify all     <bundle.json>   # everything; exit 0 / nonzero for CI
 //! ```
 //!
@@ -17,7 +18,7 @@
 //! producer emits.
 
 use anyhow::{Context, Result};
-use cloakpipe_verify::{bundle, verify};
+use cloakpipe_verify::{anchor, bundle, verify};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -72,12 +73,55 @@ fn run(args: &[String]) -> Result<ExitCode> {
         }
         "all" => {
             let b = load_bundle(&path)?;
-            match verify::verify_all(&b) {
-                Ok(s) => {
-                    println!(
-                        "OK  records={} signatures={} chain_tip={}",
-                        s.records, s.signatures, s.chain_tip
-                    );
+            // v2 bundles get full anchor + inclusion-proof checks.
+            if b.format_version >= 2 {
+                match run_all_v2(&b) {
+                    Ok(s) => {
+                        println!(
+                            "OK  records={} signatures={} anchors={} inclusion_proofs={} chain_tip={}",
+                            s.records, s.signatures, s.anchors, s.proofs, s.chain_tip
+                        );
+                        Ok(ExitCode::from(0))
+                    }
+                    Err(e) => {
+                        println!("FAIL  {e}");
+                        Ok(ExitCode::from(1))
+                    }
+                }
+            } else {
+                match verify::verify_all(&b) {
+                    Ok(s) => {
+                        println!(
+                            "OK  records={} signatures={} chain_tip={}",
+                            s.records, s.signatures, s.chain_tip
+                        );
+                        Ok(ExitCode::from(0))
+                    }
+                    Err(e) => {
+                        println!("FAIL  {e}");
+                        Ok(ExitCode::from(1))
+                    }
+                }
+            }
+        }
+        "anchors" => {
+            let b = load_bundle(&path)?;
+            match anchor::verify_anchors(&b) {
+                Ok(n) => {
+                    println!("OK  {n} anchor receipt(s) verified");
+                    Ok(ExitCode::from(0))
+                }
+                Err(e) => {
+                    println!("FAIL  {e}");
+                    Ok(ExitCode::from(1))
+                }
+            }
+        }
+        "proofs" => {
+            let b = load_bundle(&path)?;
+            match anchor::verify_inclusion_proofs(&b) {
+                Ok(n) => {
+                    println!("OK  {n} inclusion proof(s) verified");
                     Ok(ExitCode::from(0))
                 }
                 Err(e) => {
@@ -102,12 +146,35 @@ fn load_bundle(path: &str) -> Result<bundle::Bundle> {
     Ok(b)
 }
 
+struct AllV2Summary {
+    records: usize,
+    signatures: usize,
+    anchors: usize,
+    proofs: usize,
+    chain_tip: bundle::Hex32,
+}
+
+fn run_all_v2(b: &bundle::Bundle) -> Result<AllV2Summary, anyhow::Error> {
+    let summary = verify::verify_all(b).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let anchors = anchor::verify_anchors(b).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let proofs = anchor::verify_inclusion_proofs(b).map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(AllV2Summary {
+        records: summary.records,
+        signatures: summary.signatures,
+        anchors,
+        proofs,
+        chain_tip: summary.chain_tip,
+    })
+}
+
 const USAGE: &str = "\
 cloakpipe-verify — standalone auditor for CloakPipe evidence bundles
 
 USAGE:
   cloakpipe-verify chain   <bundle.json>
   cloakpipe-verify sigs    <bundle.json>
+  cloakpipe-verify anchors <bundle.json>
+  cloakpipe-verify proofs  <bundle.json>
   cloakpipe-verify all     <bundle.json>
 
 EXITS:

@@ -9,5 +9,6 @@
 //! party can build *only* this crate and verify a bundle — see
 //! `tests/m2_gate.rs` for the end-to-end gate.
 
+pub mod anchor;
 pub mod bundle;
 pub mod verify;
