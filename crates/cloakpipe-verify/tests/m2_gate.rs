@@ -49,6 +49,20 @@ fn bundle_format_magic_and_version() {
 }
 
 #[test]
+fn v1_bundle_is_accepted_for_backward_compat() {
+    // Bundles shipped before M3 had format_version=1. They lack
+    // inclusion proofs and anchor receipts; the verifier must
+    // accept them, just skip the M3-only checks.
+    let raw = std::fs::read_to_string(fixture_path()).unwrap();
+    let mut bundle: Bundle = serde_json::from_str(&raw).unwrap();
+    bundle.format_version = 1;
+    bundle.inclusion_proofs.clear();
+    bundle.anchor_receipts.clear();
+    let tip = verify_chain(&bundle).expect("v1 chain verifies");
+    assert!(!tip.is_empty());
+}
+
+#[test]
 fn tamper_canonical_bytes_fails_chain() {
     let raw = std::fs::read_to_string(fixture_path()).unwrap();
     let mut bundle: Bundle = serde_json::from_str(&raw).unwrap();

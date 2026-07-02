@@ -24,7 +24,7 @@ pub mod bundle_format {
     use serde::{Deserialize, Serialize};
 
     pub const BUNDLE_MAGIC: &str = "cloakpipe.bundle";
-    pub const BUNDLE_FORMAT_VERSION: u32 = 1;
+    pub const BUNDLE_FORMAT_VERSION: u32 = 2;
 
     pub type Hex32 = String;
     pub type Hex64 = String;
@@ -177,7 +177,7 @@ mod format_compat {
         // Structural invariants the verifier relies on. If any of
         // these drift, `cloakpipe-verify` will reject every bundle.
         assert_eq!(bundle.format, "cloakpipe.bundle");
-        assert_eq!(bundle.format_version, 1);
+        assert_eq!(bundle.format_version, 2);
         assert!(!bundle.records.is_empty());
         let rec = &bundle.records[0];
         assert!(!rec.canonical_bytes.is_empty());
@@ -213,7 +213,7 @@ mod tests {
         let bundle = export_bundle(&store, &t, &signer).unwrap();
         assert_eq!(bundle.records.len(), 3);
         assert_eq!(bundle.format, "cloakpipe.bundle");
-        assert_eq!(bundle.format_version, 1);
+        assert_eq!(bundle.format_version, 2);
         // Record 0's prev_hash is all zeros (genesis).
         assert!(bundle.records[0].prev_hash.chars().all(|c| c == '0'));
         // Each record's record_hash matches SHA-256 of its canonical bytes.

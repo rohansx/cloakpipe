@@ -38,8 +38,17 @@ use serde::{Deserialize, Serialize};
 /// that doesn't have this gets rejected.
 pub const BUNDLE_MAGIC: &str = "cloakpipe.bundle";
 
-/// Current format version. Bump on any breaking change.
-pub const BUNDLE_FORMAT_VERSION: u32 = 1;
+/// Current format version.
+///
+/// History:
+/// - v1: records + batch heads + signatures (M2)
+/// - v2: + Merkle inclusion proofs per record + anchor receipts (M3)
+pub const BUNDLE_FORMAT_VERSION: u32 = 2;
+
+/// The version that introduced Merkle proofs and anchor receipts.
+/// Bundles with version < 2 cannot have these fields; the verifier
+/// accepts them but skips Merkle/anchor checks with a clear warning.
+pub const MIN_BUNDLE_VERSION_FOR_ANCHORS: u32 = 2;
 
 /// A tenant identifier. Lowercase hyphenated UUID.
 pub type TenantId = String;
@@ -63,10 +72,20 @@ pub struct Bundle {
     pub tenant_id: TenantId,
     pub created_at: String,
     pub records: Vec<Record>,
+    /// Per-record Merkle inclusion proofs, indexed by record seq.
+    /// If a record has no proof, `bundle_inclusion_proofs[seq]` is
+    /// `None`.
+    #[serde(default)]
+    pub inclusion_proofs: Vec<Option<InclusionProofRef>>,
     #[serde(default)]
     pub batch_heads: Vec<BatchHead>,
     #[serde(default)]
     pub signer_public_keys: Vec<SignerKey>,
+    /// Anchor receipts attached to the bundle. Each receipt is bound
+    /// to a specific batch head via [`AnchorReceipt::batch_id`].
+    /// Receipts are independently verifiable offline.
+    #[serde(default)]
+    pub anchor_receipts: Vec<AnchorReceiptRef>,
 }
 
 /// A single ledger record.
@@ -85,8 +104,10 @@ pub struct Record {
     pub prev_hash: Hex32,
 }
 
-/// One batch head (anchor submission). Phase 1 (M2) signs only batch
-/// heads — per ADR-003, per-record signing would balloon the bundle.
+/// One batch head (anchor submission). M3 adds the signed-time claim
+/// (an RFC3339 timestamp the operator claims the batch was sealed at)
+/// plus Merkle root (the root of the Merkle tree built over record
+/// hashes). The signed payload covers all of these.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BatchHead {
     pub batch_id: String,
@@ -94,8 +115,70 @@ pub struct BatchHead {
     pub last_seq: u64,
     pub merkle_root: Hex32,
     pub algorithm: String,
+    /// Operator-claimed wall-clock seal time (RFC3339 UTC). The
+    /// signed payload includes this. If an anchor receipt's claimed
+    /// time is *before* this, the operator's claim is consistent with
+    /// the anchor; if *after*, the seal time may be back-dated.
     pub signed_time: Option<String>,
     pub signature: SignedBatchHead,
+}
+
+/// One step of a Merkle inclusion proof.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProofStepRef {
+    /// `left` means the sibling is the left child (we are the right
+    /// child); `right` means we are the left child.
+    pub position: String,
+    pub hash: Hex32,
+}
+
+/// Inclusion proof for one record in one batch. The verifier
+/// reconstructs the Merkle root from `leaf_value` (the record's
+/// canonical bytes) plus these steps and compares to
+/// `batch_head.merkle_root`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InclusionProofRef {
+    pub batch_id: String,
+    pub leaf_index: u64,
+    pub total_leaves: u64,
+    pub steps: Vec<ProofStepRef>,
+}
+
+/// Anchor receipt reference (mirrored from `cloakpipe-anchor` types).
+///
+/// Two variants:
+/// - `tsa`: an RFC-3161 timestamp token over the batch head's
+///   canonical bytes. Verifier checks the TSA signature.
+/// - `log`: an inclusion proof + signed-tree-head from a transparency
+///   log. Verifier checks both the log signature on the STH and the
+///   inclusion proof linking the subject hash to the STH.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AnchorReceiptRef {
+    Tsa {
+        batch_id: String,
+        subject_hash: Hex32,
+        claimed_time: String,
+        backend_ref: String,
+        /// Hex-encoded DER blob of the RFC-3161 timestamp token.
+        token_der: String,
+        /// Hex-encoded Ed25519 public key of the TSA (so the verifier
+        /// can check the token's signature offline).
+        tsa_pubkey: String,
+    },
+    Log {
+        batch_id: String,
+        subject_hash: Hex32,
+        claimed_time: String,
+        log_index: u64,
+        /// Hex-encoded signed-tree-head bytes.
+        sth_bytes: String,
+        /// Hex-encoded inclusion proof (sibling hashes, left/right
+        /// tagged) linking subject_hash to sth_bytes' root.
+        inclusion_proof: Vec<ProofStepRef>,
+        /// Hex-encoded Ed25519 public key of the log.
+        log_pubkey: String,
+    },
 }
 
 /// The actual signature payload over a batch head.
@@ -120,7 +203,7 @@ mod tests {
     #[test]
     fn magic_and_version_are_stable() {
         assert_eq!(BUNDLE_MAGIC, "cloakpipe.bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 1);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 2);
     }
 
     #[test]
@@ -137,8 +220,10 @@ mod tests {
                 record_hash: "0".repeat(64),
                 prev_hash: "0".repeat(64),
             }],
+            inclusion_proofs: vec![None],
             batch_heads: vec![],
             signer_public_keys: vec![],
+            anchor_receipts: vec![],
         };
         let j = serde_json::to_string(&b).unwrap();
         let back: Bundle = serde_json::from_str(&j).unwrap();

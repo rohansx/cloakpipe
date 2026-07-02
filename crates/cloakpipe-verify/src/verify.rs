@@ -12,7 +12,7 @@ use thiserror::Error;
 pub enum VerifyError {
     #[error("format mismatch: expected `cloakpipe.bundle`, got `{0}`")]
     BadFormat(String),
-    #[error("format version {0} is not supported (this verifier knows v1)")]
+    #[error("format version {0} is not supported (this verifier knows v1 and v2)")]
     UnsupportedVersion(u32),
     #[error("record #{seq}: canonical bytes are not valid utf-8")]
     CanonicalNotUtf8 { seq: u64 },
@@ -34,15 +34,45 @@ pub enum VerifyError {
     BadSignature(String),
     #[error("signer key `{0}` is not valid hex pubkey")]
     BadPubkey(String),
+    #[error("record #{seq}: inclusion proof against batch `{batch_id}` failed — leaf not in tree")]
+    InclusionProofFailed { seq: u64, batch_id: String },
+    #[error("record #{seq} has no inclusion proof for batch `{batch_id}`")]
+    MissingInclusionProof { seq: u64, batch_id: String },
+    #[error("anchor receipt `{batch_id}/{backend}`: TSA signature invalid")]
+    TsaSignatureInvalid { batch_id: String, backend: String },
+    #[error("anchor receipt `{batch_id}/{backend}`: log signature on STH invalid")]
+    LogSignatureInvalid { batch_id: String, backend: String },
+    #[error("anchor receipt `{batch_id}/{backend}`: log inclusion proof invalid")]
+    LogInclusionProofInvalid { batch_id: String, backend: String },
+    #[error("anchor receipt `{batch_id}` claims subject hash `{got}`, expected `{expected}`")]
+    SubjectHashMismatch {
+        batch_id: String,
+        got: String,
+        expected: String,
+    },
+    #[error("batch `{batch_id}` signed_time `{claimed}` is after anchor time `{anchor}` — possible back-dating")]
+    BackDating {
+        batch_id: String,
+        claimed: String,
+        anchor: String,
+    },
+    #[error("bundle format v1 has no anchors; this verifier requires v2 for anchor checks")]
+    AnchorsRequireV2,
+    #[error("invalid hex in anchor receipt: {0}")]
+    BadAnchorHex(String),
+    #[error("invalid RFC3339 timestamp: {0}")]
+    BadTimestamp(String),
 }
 
 /// Validate the bundle's `format` and `format_version` fields. Catches
 /// "the file isn't even a bundle" before we waste time on it.
+///
+/// Accepts versions 1 and 2. v1 has no anchor data; v2 may have it.
 pub fn check_magic(bundle: &Bundle) -> Result<(), VerifyError> {
     if bundle.format != crate::bundle::BUNDLE_MAGIC {
         return Err(VerifyError::BadFormat(bundle.format.clone()));
     }
-    if bundle.format_version != crate::bundle::BUNDLE_FORMAT_VERSION {
+    if bundle.format_version != 1 && bundle.format_version != crate::bundle::BUNDLE_FORMAT_VERSION {
         return Err(VerifyError::UnsupportedVersion(bundle.format_version));
     }
     Ok(())
@@ -257,6 +287,8 @@ mod tests {
             created_at: "2026-07-02T12:00:00+00:00".into(),
             records: vec![],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         verify_chain(&b).unwrap();
@@ -272,6 +304,8 @@ mod tests {
             created_at: "x".into(),
             records: vec![r],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         let tip = verify_chain(&b).unwrap();
@@ -290,6 +324,8 @@ mod tests {
             created_at: "x".into(),
             records: vec![tampered],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         let err = verify_chain(&b).unwrap_err();
@@ -307,6 +343,8 @@ mod tests {
             created_at: "x".into(),
             records: vec![r0, r2],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         let err = verify_chain(&b).unwrap_err();
@@ -325,6 +363,8 @@ mod tests {
             created_at: "x".into(),
             records: vec![r0, r1],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         let err = verify_chain(&b).unwrap_err();
@@ -340,6 +380,8 @@ mod tests {
             created_at: "x".into(),
             records: vec![],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         assert_eq!(check_magic(&b), Err(VerifyError::BadFormat("evil.bundle".into())));
@@ -354,6 +396,8 @@ mod tests {
             created_at: "x".into(),
             records: vec![],
             batch_heads: vec![],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         assert_eq!(check_magic(&b), Err(VerifyError::UnsupportedVersion(999)));
@@ -380,6 +424,8 @@ mod tests {
                     value: "0".repeat(128),
                 },
             }],
+            inclusion_proofs: vec![],
+            anchor_receipts: vec![],
             signer_public_keys: vec![],
         };
         let err = verify_sigs(&b).unwrap_err();
