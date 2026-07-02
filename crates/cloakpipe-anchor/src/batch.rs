@@ -21,32 +21,40 @@ use serde::{Deserialize, Serialize};
 /// One batch head. `signature` is over the *unsigned* fields
 /// (everything else in this struct), serialized as JSON. The
 /// signature value is hex-encoded in the wire format.
+///
+/// ## Wire format
+///
+/// The serialized JSON shape MUST match the bundle's [`BatchHead`]
+/// type in `cloakpipe-verify` — same field names, same nesting. The
+/// verifier hashes the whole struct to recompute the subject hash.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignedBatchHead {
     pub batch_id: String,
-    pub key_id: String,
-    pub algorithm: String,
     pub first_seq: u64,
     pub last_seq: u64,
     pub merkle_root: String,
+    pub algorithm: String,
     pub signed_time: Option<String>,
     pub signature: SignedBatchHeadSig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignedBatchHeadSig {
+    pub key_id: String,
+    pub algorithm: String,
     pub value: String, // hex(64)
 }
 
-/// The unsigned portion of a batch head. The producer signs this.
+/// The unsigned portion of a batch head — what gets hashed for the
+/// subject hash. Matches the field shape of the bundle's
+/// [`BatchHead`] so the verifier's re-hash produces the same bytes.
 #[derive(Debug, Clone, Serialize)]
 pub struct BatchHeadUnsigned<'a> {
     pub batch_id: &'a str,
-    pub key_id: &'a str,
-    pub algorithm: &'a str,
     pub first_seq: u64,
     pub last_seq: u64,
     pub merkle_root: &'a str,
+    pub algorithm: &'a str,
     pub signed_time: &'a Option<String>,
 }
 
@@ -54,11 +62,10 @@ impl<'a> From<&'a SignedBatchHead> for BatchHeadUnsigned<'a> {
     fn from(h: &'a SignedBatchHead) -> Self {
         Self {
             batch_id: &h.batch_id,
-            key_id: &h.key_id,
-            algorithm: &h.algorithm,
             first_seq: h.first_seq,
             last_seq: h.last_seq,
             merkle_root: &h.merkle_root,
+            algorithm: &h.algorithm,
             signed_time: &h.signed_time,
         }
     }
@@ -68,23 +75,25 @@ impl<'a> From<&'a SignedBatchHead> for BatchHeadUnsigned<'a> {
 /// a signature value (hex-encoded).
 pub fn build_signed_batch_head(
     batch_id: impl Into<String>,
-    key_id: impl Into<String>,
-    algorithm: impl Into<String>,
     first_seq: u64,
     last_seq: u64,
     merkle_root: impl Into<String>,
+    algorithm: impl Into<String>,
     signed_time: Option<String>,
+    key_id: impl Into<String>,
+    sig_algorithm: impl Into<String>,
     signature_hex: impl Into<String>,
 ) -> SignedBatchHead {
     SignedBatchHead {
         batch_id: batch_id.into(),
-        key_id: key_id.into(),
-        algorithm: algorithm.into(),
         first_seq,
         last_seq,
         merkle_root: merkle_root.into(),
+        algorithm: algorithm.into(),
         signed_time,
         signature: SignedBatchHeadSig {
+            key_id: key_id.into(),
+            algorithm: sig_algorithm.into(),
             value: signature_hex.into(),
         },
     }
@@ -99,12 +108,13 @@ mod tests {
         let sig_hex: String = std::iter::repeat('a').take(128).collect();
         let h = build_signed_batch_head(
             "b1",
-            "k1",
-            "ed25519",
             0,
             9,
             "0".repeat(64).as_str(),
+            "ed25519",
             None,
+            "k1",
+            "ed25519",
             sig_hex,
         );
         let j = serde_json::to_string(&h).unwrap();
@@ -113,16 +123,17 @@ mod tests {
     }
 
     #[test]
-    fn unsigned_view_excludes_signature() {
+    fn unsigned_view_excludes_signature_value() {
         let sig_hex: String = std::iter::repeat('7').take(128).collect();
         let h = build_signed_batch_head(
             "b1",
-            "k1",
-            "ed25519",
             0,
             9,
             "0".repeat(64).as_str(),
+            "ed25519",
             None,
+            "k1",
+            "ed25519",
             sig_hex,
         );
         let u = BatchHeadUnsigned::from(&h);

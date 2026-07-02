@@ -279,12 +279,13 @@ mod tests {
         let sig_hex: String = std::iter::repeat('0').take(128).collect();
         build_signed_batch_head(
             "b1",
-            "k1",
-            "ed25519",
             0,
             9,
             "0".repeat(64).as_str(),
+            "ed25519",
             None,
+            "k1",
+            "ed25519",
             sig_hex,
         )
     }
