@@ -16,10 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Build
+      # Default features = the lean regex-only path (the OSS default). It must
+      # compile and pass on its own, independent of the optional ner/gliner-pii.
+      - name: Build core (default features)
+        run: cargo build -p cloakpipe-core
+      - name: Test core (default features)
+        run: cargo test -p cloakpipe-core
+      # Full workspace — cloakpipe-cli and cloakpipe-proxy pull in the
+      # `ner` (ort + tokenizers) and `gliner-pii` features.
+      - name: Build workspace
         run: cargo build --workspace
-      - name: Test
+      - name: Test workspace
         run: cargo test --workspace
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -111,3 +121,12 @@ jobs:
               issue_number: context.issue.number,
               body,
             });
+
+  docker:
+    # Validate the image builds. Gated to push (it's a full release build) so
+    # routine PRs stay fast.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t cloakpipe:ci .

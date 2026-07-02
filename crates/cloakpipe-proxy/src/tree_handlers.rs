@@ -113,12 +113,12 @@ pub async fn tree_index_text(
     let tree = indexer
         .build_index_from_text(&req.name, &req.text)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Indexing failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Indexing failed: {e}")))?;
 
     // Save to storage
     let storage_path = &tree_config.storage_path;
     TreeStorage::save(&tree, storage_path)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Storage failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Storage failed: {e}")))?;
 
     let nav = tree.navigation_map();
     Ok(Json(IndexResponse {
@@ -158,10 +158,10 @@ pub async fn tree_index_file(
     let tree = indexer
         .build_index(file_path)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Indexing failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Indexing failed: {e}")))?;
 
     TreeStorage::save(&tree, &tree_config.storage_path)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Storage failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Storage failed: {e}")))?;
 
     let nav = tree.navigation_map();
     Ok(Json(IndexResponse {
@@ -189,11 +189,11 @@ pub async fn tree_list(
     let storage_path = &state.config.tree.storage_path;
 
     let trees_raw = TreeStorage::list(storage_path)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("List failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("List failed: {e}")))?;
 
     let mut items = Vec::new();
     for (id, _source) in trees_raw {
-        let path = format!("{}/{}.json", storage_path, id);
+        let path = format!("{storage_path}/{id}.json");
         if let Ok(tree) = TreeStorage::load(&path) {
             let node_count = tree.node_count();
             items.push(TreeListItem {
@@ -216,7 +216,7 @@ pub async fn tree_get(
 ) -> Result<Json<IndexResponse>, (StatusCode, String)> {
     let path = format!("{}/{}.json", state.config.tree.storage_path, tree_id);
     let tree = TreeStorage::load(&path)
-        .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {}", e)))?;
+        .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {e}")))?;
 
     let nav = tree.navigation_map();
     Ok(Json(IndexResponse {
@@ -244,10 +244,10 @@ pub async fn tree_search(
     Json(req): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
     let storage_path = &state.config.tree.storage_path;
-    let tree_path = format!("{}/{}.json", storage_path, tree_id);
+    let tree_path = format!("{storage_path}/{tree_id}.json");
 
     let tree = TreeStorage::load(&tree_path)
-        .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {}", e)))?;
+        .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {e}")))?;
 
     let searcher = TreeSearcher::new(
         state.api_key.clone(),
@@ -258,7 +258,7 @@ pub async fn tree_search(
     let result = searcher
         .search(&tree, &req.query)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Search failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Search failed: {e}")))?;
 
     // Extract content from matched nodes
     // Re-parse document for extraction (or load cached pages)
@@ -289,9 +289,9 @@ pub async fn tree_query(
 
     // Load or build tree
     let tree = if let Some(tree_id) = &req.tree_id {
-        let path = format!("{}/{}.json", storage_path, tree_id);
+        let path = format!("{storage_path}/{tree_id}.json");
         TreeStorage::load(&path)
-            .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {}", e)))?
+            .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {e}")))?
     } else if let Some(text) = &req.text {
         let name = req.name.as_deref().unwrap_or("uploaded-document");
         let indexer = TreeIndexer::new(
@@ -302,9 +302,9 @@ pub async fn tree_query(
         let tree = indexer
             .build_index_from_text(name, text)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Indexing failed: {}", e)))?;
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Indexing failed: {e}")))?;
         TreeStorage::save(&tree, storage_path)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Storage failed: {}", e)))?;
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Storage failed: {e}")))?;
         tree
     } else {
         return Err((StatusCode::BAD_REQUEST, "Either tree_id or text required".to_string()));
@@ -320,7 +320,7 @@ pub async fn tree_query(
     let search_result = searcher
         .search(&tree, &req.query)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Search failed: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Search failed: {e}")))?;
 
     // Build extracted items from node summaries/titles
     let sources: Vec<ExtractedItem> = search_result.node_ids.iter().filter_map(|id| {
@@ -366,10 +366,10 @@ pub async fn tree_query(
         .json(&answer_body)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("LLM request failed: {}", e)))?
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("LLM request failed: {e}")))?
         .json::<Value>()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Invalid LLM response: {}", e)))?;
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Invalid LLM response: {e}")))?;
 
     let answer = response["choices"][0]["message"]["content"]
         .as_str()
@@ -391,7 +391,7 @@ pub async fn tree_delete(
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let path = format!("{}/{}.json", state.config.tree.storage_path, tree_id);
     std::fs::remove_file(&path)
-        .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {}", e)))?;
+        .map_err(|e| (StatusCode::NOT_FOUND, format!("Tree not found: {e}")))?;
 
     Ok(Json(serde_json::json!({"deleted": tree_id})))
 }

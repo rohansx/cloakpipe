@@ -43,7 +43,7 @@ impl SqliteVault {
         }
 
         let conn = Connection::open(path)
-            .with_context(|| format!("Failed to open vault database: {}", path))?;
+            .with_context(|| format!("Failed to open vault database: {path}"))?;
 
         // WAL mode for better concurrent read performance
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -180,9 +180,9 @@ impl SqliteVault {
 
         // Include user_id in token to avoid collisions across users
         let token_str = if user_key.is_empty() {
-            format!("{}_{}", prefix, counter)
+            format!("{prefix}_{counter}")
         } else {
-            format!("{}_{}_{}", prefix, user_key, counter)
+            format!("{prefix}_{user_key}_{counter}")
         };
 
         let token = PseudoToken {
@@ -282,7 +282,7 @@ impl SqliteVault {
 
         let ciphertext = self.cipher
             .encrypt(nonce, plaintext.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Encryption failed: {e}"))?;
 
         let mut output = Vec::with_capacity(12 + ciphertext.len());
         output.extend_from_slice(&nonce_bytes);

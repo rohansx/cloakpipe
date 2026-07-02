@@ -125,7 +125,7 @@ impl TreeIndexer {
                 .unwrap_or(pages.len());
 
             let node = TreeNode {
-                id: format!("{}", i + 1),
+                id: (i + 1).to_string(),
                 title: heading.text.clone(),
                 summary: None,
                 pages: (
@@ -173,7 +173,7 @@ impl TreeIndexer {
             let end = chunk.last().map(|p| p.page_number).unwrap_or(start);
 
             nodes.push(TreeNode {
-                id: format!("{}", i + 1),
+                id: (i + 1).to_string(),
                 title: format!("Section {}", i + 1),
                 summary: None,
                 pages: (start, end),
@@ -229,9 +229,8 @@ impl TreeIndexer {
         };
 
         let prompt = format!(
-            "Summarize the following section titled '{}' in 2-3 sentences. \
-             Focus on key facts, figures, and conclusions.\n\n{}",
-            title, truncated
+            "Summarize the following section titled '{title}' in 2-3 sentences. \
+             Focus on key facts, figures, and conclusions.\n\n{truncated}"
         );
 
         let body = serde_json::json!({
@@ -266,11 +265,10 @@ impl TreeIndexer {
 
     async fn generate_doc_description(&self, tree: &TreeIndex) -> Result<String> {
         let nav = tree.navigation_map();
-        let toc: String = nav.iter().take(20).map(|e| format!("{}\n", e)).collect();
+        let toc: String = nav.iter().take(20).map(|e| format!("{e}\n")).collect();
 
         let prompt = format!(
-            "Based on this table of contents, write a one-sentence description of what this document is about:\n\n{}",
-            toc
+            "Based on this table of contents, write a one-sentence description of what this document is about:\n\n{toc}"
         );
 
         let body = serde_json::json!({

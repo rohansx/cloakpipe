@@ -1,0 +1,38 @@
+# CloakPipe container config.
+# Binds 0.0.0.0 so the proxy is reachable from outside the container (the
+# default 127.0.0.1 would not be). Mount your own /app/cloakpipe.toml to override.
+
+[proxy]
+listen = "0.0.0.0:8900"
+upstream = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 120
+max_concurrent = 256
+mode = "proxy"
+
+[vault]
+path = "/data/vault.enc"
+encryption = "aes-256-gcm"
+key_env = "CLOAKPIPE_VAULT_KEY"
+
+[detection]
+secrets = true
+financial = true
+dates = true
+emails = true
+phone_numbers = true
+ip_addresses = false
+urls_internal = false
+
+# Neural NER is off by default — regex/heuristic detection needs no model
+# download. Enable and supply a model to use it.
+[detection.ner]
+enabled = false
+
+[audit]
+enabled = true
+log_path = "/data/audit/"
+format = "jsonl"
+retention_days = 90
+log_entities = true
+log_mappings = false

@@ -344,7 +344,7 @@ impl SessionContext {
         results.extend(self.resolve_possessives(text));
 
         // Deduplicate by position (keep highest confidence)
-        results.sort_by(|a, b| a.0.start.cmp(&b.0.start));
+        results.sort_by_key(|a| a.0.start);
         results.dedup_by(|a, b| {
             if a.0.start == b.0.start {
                 if b.0.confidence > a.0.confidence {
@@ -442,7 +442,7 @@ impl SessionContext {
                 .next()
                 .unwrap_or(&entity.original);
 
-            let possessive = format!("{}'s", first_name);
+            let possessive = format!("{first_name}'s");
             if let Some(pos) = find_word_boundary(text, &possessive) {
                 results.push((
                     DetectedEntity {
@@ -1060,7 +1060,7 @@ mod tests {
         ];
         for text in pairs {
             let mut ctx = SessionContext::new("s".into(), test_config());
-            assert!(ctx.check_sensitivity(text), "Should escalate for: {}", text);
+            assert!(ctx.check_sensitivity(text), "Should escalate for: {text}");
         }
     }
 

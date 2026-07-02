@@ -14,7 +14,7 @@ pub fn parse_document(file_path: &str) -> Result<Vec<ParsedPage>> {
     match ext.to_lowercase().as_str() {
         "pdf" => parse_pdf(file_path),
         "txt" | "md" => parse_text(file_path),
-        _ => bail!("Unsupported file format: .{}", ext),
+        _ => bail!("Unsupported file format: .{ext}"),
     }
 }
 
@@ -22,7 +22,7 @@ pub fn parse_document(file_path: &str) -> Result<Vec<ParsedPage>> {
 fn parse_pdf(file_path: &str) -> Result<Vec<ParsedPage>> {
     let bytes = std::fs::read(file_path)?;
     let full_text = pdf_extract::extract_text_from_mem(&bytes)
-        .map_err(|e| anyhow::anyhow!("PDF extraction failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("PDF extraction failed: {e}"))?;
 
     // Split into pages by form feed characters, or treat as single page
     let raw_pages: Vec<&str> = if full_text.contains('\u{0C}') {

@@ -55,18 +55,18 @@ pub async fn rehydrate_stream(
                             }
 
                             let serialized = serde_json::to_string(&chunk).unwrap_or_default();
-                            yield Ok(format!("data: {}\n\n", serialized));
+                            yield Ok(format!("data: {serialized}\n\n"));
                         }
                     } else {
                         // Non-content chunk (role, finish_reason, etc.) — pass through
-                        yield Ok(format!("data: {}\n\n", data));
+                        yield Ok(format!("data: {data}\n\n"));
                     }
                 } else {
                     // Unparseable data — pass through
-                    yield Ok(format!("data: {}\n\n", data));
+                    yield Ok(format!("data: {data}\n\n"));
                 }
             } else if !line.is_empty() {
-                yield Ok(format!("{}\n", line));
+                yield Ok(format!("{line}\n"));
             }
         }
 

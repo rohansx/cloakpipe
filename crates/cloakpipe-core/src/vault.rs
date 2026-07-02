@@ -148,7 +148,7 @@ impl Vault {
         *counter += 1;
 
         let token = PseudoToken {
-            token: format!("{}_{}", prefix, counter),
+            token: format!("{prefix}_{counter}"),
             category: category.clone(),
             id: *counter,
         };
@@ -239,7 +239,7 @@ impl Vault {
         let encrypted = self.encrypt(&json)?;
 
         // Atomic write: write to .tmp, then rename
-        let tmp_path = format!("{}.tmp", path);
+        let tmp_path = format!("{path}.tmp");
         if let Some(parent) = std::path::Path::new(path).parent() {
             std::fs::create_dir_all(parent).context("Failed to create vault directory")?;
         }
@@ -344,7 +344,7 @@ impl Vault {
 
         let ciphertext = cipher
             .encrypt(nonce, plaintext)
-            .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Encryption failed: {e}"))?;
 
         let mut output = Vec::with_capacity(12 + ciphertext.len());
         output.extend_from_slice(&nonce_bytes);

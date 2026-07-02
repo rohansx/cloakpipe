@@ -430,13 +430,13 @@ fn main() {
     if !false_positive_details.is_empty() {
         println!("\nFalse Positives ({}):", false_positive_details.len());
         for detail in &false_positive_details {
-            println!("{}", detail);
+            println!("{detail}");
         }
     }
     if !false_negative_details.is_empty() {
         println!("\nFalse Negatives ({}):", false_negative_details.len());
         for detail in &false_negative_details {
-            println!("{}", detail);
+            println!("{detail}");
         }
     }
 

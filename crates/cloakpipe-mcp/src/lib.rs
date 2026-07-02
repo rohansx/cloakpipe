@@ -29,6 +29,8 @@ pub struct CloakPipeServer {
     config: Arc<RwLock<DetectionConfig>>,
     active_profile: Arc<RwLock<Option<String>>>,
     sessions: Arc<SessionManager>,
+    // Held for the rmcp tool-dispatch framework; not read directly in this crate.
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -124,13 +126,13 @@ impl CloakPipeServer {
         let detector = self.detector.read().await;
         let entities = match detector.detect(&params.text) {
             Ok(e) => e,
-            Err(e) => return format!("Error: Detection failed: {}", e),
+            Err(e) => return format!("Error: Detection failed: {e}"),
         };
 
         let mut vault = self.vault.lock().await;
         let result = match Replacer::pseudonymize(&params.text, &entities, &mut vault) {
             Ok(r) => r,
-            Err(e) => return format!("Error: Pseudonymize failed: {}", e),
+            Err(e) => return format!("Error: Pseudonymize failed: {e}"),
         };
 
         let categories: Vec<String> = entities
@@ -146,7 +148,7 @@ impl CloakPipeServer {
             categories,
         };
 
-        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {}", e))
+        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {e}"))
     }
 
     /// Rehydrate text: replace pseudo-tokens back with original values.
@@ -158,7 +160,7 @@ impl CloakPipeServer {
         let vault = self.vault.lock().await;
         let result = match Rehydrator::rehydrate(&params.text, &vault) {
             Ok(r) => r,
-            Err(e) => return format!("Error: Rehydrate failed: {}", e),
+            Err(e) => return format!("Error: Rehydrate failed: {e}"),
         };
 
         let response = RehydrateResult {
@@ -166,7 +168,7 @@ impl CloakPipeServer {
             tokens_rehydrated: result.rehydrated_count,
         };
 
-        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {}", e))
+        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {e}"))
     }
 
     /// Detect sensitive entities in text without replacing them (dry run).
@@ -178,7 +180,7 @@ impl CloakPipeServer {
         let detector = self.detector.read().await;
         let entities = match detector.detect(&params.text) {
             Ok(e) => e,
-            Err(e) => return format!("Error: Detection failed: {}", e),
+            Err(e) => return format!("Error: Detection failed: {e}"),
         };
 
         let response = DetectResult {
@@ -193,7 +195,7 @@ impl CloakPipeServer {
                 .collect(),
         };
 
-        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {}", e))
+        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {e}"))
     }
 
     /// Show vault statistics: total mappings and per-category counts.
@@ -207,7 +209,7 @@ impl CloakPipeServer {
             categories: stats.categories,
         };
 
-        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {}", e))
+        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {e}"))
     }
 
     /// Configure detection: switch industry profile or toggle categories.
@@ -226,8 +228,7 @@ impl CloakPipeServer {
                 *ap = Some(profile.name().to_string());
             } else {
                 return format!(
-                    "Error: Unknown profile '{}'. Use: general, legal, healthcare, fintech",
-                    profile_name
+                    "Error: Unknown profile '{profile_name}'. Use: general, legal, healthcare, fintech"
                 );
             }
         }
@@ -243,7 +244,7 @@ impl CloakPipeServer {
         // Rebuild detector with new config
         let new_detector = match Detector::from_config(&config) {
             Ok(d) => d,
-            Err(e) => return format!("Error: Failed to rebuild detector: {}", e),
+            Err(e) => return format!("Error: Failed to rebuild detector: {e}"),
         };
         let mut detector = self.detector.write().await;
         *detector = new_detector;
@@ -259,7 +260,7 @@ impl CloakPipeServer {
             ip_addresses: config.ip_addresses,
         };
 
-        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {}", e))
+        serde_json::to_string_pretty(&response).unwrap_or_else(|e| format!("Error: {e}"))
     }
 
     /// Query session context: inspect a session's entities and coreferences, or list all active sessions.
@@ -277,11 +278,11 @@ impl CloakPipeServer {
                 "sessions": sessions,
                 "total": sessions.len(),
             }))
-            .unwrap_or_else(|e| format!("Error: {}", e))
+            .unwrap_or_else(|e| format!("Error: {e}"))
         } else {
             match self.sessions.inspect(&params.session_id) {
                 Some(stats) => serde_json::to_string_pretty(&stats)
-                    .unwrap_or_else(|e| format!("Error: {}", e)),
+                    .unwrap_or_else(|e| format!("Error: {e}")),
                 None => format!(r#"{{"error": "Session '{}' not found"}}"#, params.session_id),
             }
         }
@@ -348,11 +349,11 @@ pub async fn serve_stdio(
     let service = server
         .serve(transport)
         .await
-        .map_err(|e| anyhow::anyhow!("MCP server failed to start: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("MCP server failed to start: {e}"))?;
     service
         .waiting()
         .await
-        .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("MCP server error: {e}"))?;
 
     Ok(())
 }

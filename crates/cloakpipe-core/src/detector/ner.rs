@@ -43,11 +43,11 @@ impl NerDetector {
         info!("Loading NER model from: {}", model_path);
 
         let session = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to create session builder: {}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to create session builder: {e}"))?
             .with_intra_threads(2)
-            .map_err(|e| anyhow::anyhow!("Failed to set threads: {}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to set threads: {e}"))?
             .commit_from_file(model_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load ONNX model '{}': {}", model_path, e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load ONNX model '{model_path}': {e}"))?;
 
         // Load tokenizer from same directory
         let model_dir = std::path::Path::new(model_path)
@@ -56,7 +56,7 @@ impl NerDetector {
         let tokenizer_path = model_dir.join("tokenizer.json");
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
         let labels: Vec<String> = DEFAULT_LABELS.iter().map(|s| s.to_string()).collect();
 
@@ -77,7 +77,7 @@ impl NerDetector {
         }
 
         let encoding = self.tokenizer.encode(text, false)
-            .map_err(|e| anyhow::anyhow!("Tokenization failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Tokenization failed: {e}"))?;
 
         let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
         let attention_mask: Vec<i64> = encoding.get_attention_mask().iter().map(|&m| m as i64).collect();
@@ -88,13 +88,13 @@ impl NerDetector {
         // Create ONNX input tensors using (shape, data) tuple form
         let input_ids_tensor = Value::from_array(
             ([1i64, seq_len as i64], input_ids)
-        ).map_err(|e| anyhow::anyhow!("Failed to create input_ids tensor: {}", e))?;
+        ).map_err(|e| anyhow::anyhow!("Failed to create input_ids tensor: {e}"))?;
         let attention_mask_tensor = Value::from_array(
             ([1i64, seq_len as i64], attention_mask)
-        ).map_err(|e| anyhow::anyhow!("Failed to create attention_mask tensor: {}", e))?;
+        ).map_err(|e| anyhow::anyhow!("Failed to create attention_mask tensor: {e}"))?;
         let token_type_ids_tensor = Value::from_array(
             ([1i64, seq_len as i64], token_type_ids)
-        ).map_err(|e| anyhow::anyhow!("Failed to create token_type_ids tensor: {}", e))?;
+        ).map_err(|e| anyhow::anyhow!("Failed to create token_type_ids tensor: {e}"))?;
 
         let mut session = self.session.lock()
             .map_err(|_| anyhow::anyhow!("NER session lock poisoned"))?;
@@ -103,11 +103,11 @@ impl NerDetector {
             "input_ids" => input_ids_tensor,
             "attention_mask" => attention_mask_tensor,
             "token_type_ids" => token_type_ids_tensor,
-        ]).map_err(|e| anyhow::anyhow!("ONNX inference failed: {}", e))?;
+        ]).map_err(|e| anyhow::anyhow!("ONNX inference failed: {e}"))?;
 
         // Extract logits: flat slice with shape [1, seq_len, num_labels]
         let (shape, logits_data) = outputs[0].try_extract_tensor::<f32>()
-            .map_err(|e| anyhow::anyhow!("Failed to extract logits: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to extract logits: {e}"))?;
 
         let num_labels = self.labels.len();
         // Validate shape: Shape derefs to SmallVec<[i64; 4]>
@@ -167,10 +167,8 @@ impl NerDetector {
                     *end = offset_end;
                     *conf = (*conf + confidence as f64) / 2.0;
                 }
-            } else {
-                if let Some((text_val, start, end, conf, cat)) = current_entity.take() {
-                    entities.push(make_entity(&text_val, start, end, conf, cat));
-                }
+            } else if let Some((text_val, start, end, conf, cat)) = current_entity.take() {
+                entities.push(make_entity(&text_val, start, end, conf, cat));
             }
         }
 

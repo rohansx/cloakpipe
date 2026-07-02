@@ -103,12 +103,12 @@ impl DistilBertPiiDetector {
         info!("Loading DistilBERT-PII model from: {}", model_path);
 
         let session = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to create session builder: {}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to create session builder: {e}"))?
             .with_intra_threads(2)
-            .map_err(|e| anyhow::anyhow!("Failed to set threads: {}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to set threads: {e}"))?
             .commit_from_file(model_path)
             .map_err(|e| {
-                anyhow::anyhow!("Failed to load DistilBERT-PII model '{}': {}", model_path, e)
+                anyhow::anyhow!("Failed to load DistilBERT-PII model '{model_path}': {e}")
             })?;
 
         // Find tokenizer.json: check model dir first, then parent (for quantized/ subdir)
@@ -125,7 +125,7 @@ impl DistilBertPiiDetector {
         };
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer from {:?}: {}", tokenizer_path, e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer from {tokenizer_path:?}: {e}"))?;
 
         info!(
             "DistilBERT-PII loaded: {} labels, threshold={:.2}",
@@ -148,7 +148,7 @@ impl DistilBertPiiDetector {
         let encoding = self
             .tokenizer
             .encode(text, true) // add_special_tokens=true for [CLS]/[SEP]
-            .map_err(|e| anyhow::anyhow!("Tokenization failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Tokenization failed: {e}"))?;
 
         let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
         let attention_mask: Vec<i64> = encoding
@@ -159,9 +159,9 @@ impl DistilBertPiiDetector {
         let seq_len = input_ids.len();
 
         let input_ids_tensor = Value::from_array(([1i64, seq_len as i64], input_ids))
-            .map_err(|e| anyhow::anyhow!("input_ids tensor: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("input_ids tensor: {e}"))?;
         let attention_mask_tensor = Value::from_array(([1i64, seq_len as i64], attention_mask))
-            .map_err(|e| anyhow::anyhow!("attention_mask tensor: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("attention_mask tensor: {e}"))?;
 
         let mut session = self
             .session
@@ -173,11 +173,11 @@ impl DistilBertPiiDetector {
                 "input_ids" => input_ids_tensor,
                 "attention_mask" => attention_mask_tensor,
             ])
-            .map_err(|e| anyhow::anyhow!("DistilBERT-PII inference failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("DistilBERT-PII inference failed: {e}"))?;
 
         let (_shape, logits_data) = outputs[0]
             .try_extract_tensor::<f32>()
-            .map_err(|e| anyhow::anyhow!("Failed to extract logits: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to extract logits: {e}"))?;
 
         let num_labels = LABELS.len();
         let tokens = encoding.get_tokens();

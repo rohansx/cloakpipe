@@ -99,11 +99,11 @@ impl GlinerDetector {
         info!("Loading GLiNER2 model from: {}", model_path);
 
         let session = Session::builder()
-            .map_err(|e| anyhow::anyhow!("Failed to create session builder: {}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to create session builder: {e}"))?
             .with_intra_threads(4)
-            .map_err(|e| anyhow::anyhow!("Failed to set threads: {}", e))?
+            .map_err(|e| anyhow::anyhow!("Failed to set threads: {e}"))?
             .commit_from_file(model_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load GLiNER model '{}': {}", model_path, e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load GLiNER model '{model_path}': {e}"))?;
 
         // Load tokenizer from same directory
         let model_dir = std::path::Path::new(model_path)
@@ -112,7 +112,7 @@ impl GlinerDetector {
         let tokenizer_path = model_dir.join("tokenizer.json");
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
 
         // Entity labels: use config if provided, otherwise defaults
         let entity_labels = if config.entity_types.is_empty() {
@@ -170,19 +170,19 @@ impl GlinerDetector {
 
         // Create ONNX tensors
         let input_ids_tensor = Value::from_array(([1i64, seq_len as i64], input_ids))
-            .map_err(|e| anyhow::anyhow!("Failed to create input_ids tensor: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create input_ids tensor: {e}"))?;
         let attention_mask_tensor =
             Value::from_array(([1i64, seq_len as i64], attention_mask.clone()))
-                .map_err(|e| anyhow::anyhow!("Failed to create attention_mask tensor: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to create attention_mask tensor: {e}"))?;
         let word_mask_tensor =
             Value::from_array(([1i64, seq_len as i64], word_mask.clone()))
-                .map_err(|e| anyhow::anyhow!("Failed to create word_mask tensor: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to create word_mask tensor: {e}"))?;
         let span_idx_tensor =
             Value::from_array(([1i64, num_spans as i64, 2i64], span_idx))
-                .map_err(|e| anyhow::anyhow!("Failed to create span_idx tensor: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to create span_idx tensor: {e}"))?;
         let span_mask_tensor =
             Value::from_array(([1i64, num_spans as i64], span_mask))
-                .map_err(|e| anyhow::anyhow!("Failed to create span_mask tensor: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to create span_mask tensor: {e}"))?;
 
         let mut session = self
             .session
@@ -198,12 +198,12 @@ impl GlinerDetector {
                 "span_idx" => span_idx_tensor,
                 "span_mask" => span_mask_tensor,
             ])
-            .map_err(|e| anyhow::anyhow!("GLiNER inference failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("GLiNER inference failed: {e}"))?;
 
         // Extract span logits: [1, num_spans, num_labels]
         let (_shape, logits_data) = outputs[0]
             .try_extract_tensor::<f32>()
-            .map_err(|e| anyhow::anyhow!("Failed to extract span logits: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to extract span logits: {e}"))?;
 
         // Decode spans into entities
         let entities =
@@ -227,7 +227,7 @@ impl GlinerDetector {
         let text_encoding = self
             .tokenizer
             .encode(text, false)
-            .map_err(|e| anyhow::anyhow!("Text tokenization failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Text tokenization failed: {e}"))?;
 
         let text_ids: Vec<u32> = text_encoding.get_ids().to_vec();
         let text_offsets: Vec<(usize, usize)> = text_encoding.get_offsets().to_vec();
@@ -239,11 +239,11 @@ impl GlinerDetector {
         let cls_encoding = self
             .tokenizer
             .encode("[CLS]", false)
-            .map_err(|e| anyhow::anyhow!("CLS tokenization failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("CLS tokenization failed: {e}"))?;
         let sep_encoding = self
             .tokenizer
             .encode("[SEP]", false)
-            .map_err(|e| anyhow::anyhow!("SEP tokenization failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("SEP tokenization failed: {e}"))?;
 
         // Get special token IDs
         let cls_id = cls_encoding.get_ids().first().copied().unwrap_or(1);
@@ -256,7 +256,7 @@ impl GlinerDetector {
                 .tokenizer
                 .encode(label.as_str(), false)
                 .map_err(|e| {
-                    anyhow::anyhow!("Label '{}' tokenization failed: {}", label, e)
+                    anyhow::anyhow!("Label '{label}' tokenization failed: {e}")
                 })?;
             label_tokens.extend_from_slice(label_enc.get_ids());
             label_tokens.push(sep_id);

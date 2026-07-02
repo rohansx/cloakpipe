@@ -130,7 +130,7 @@ impl AuditLogger {
             .create(true)
             .append(true)
             .open(&path)
-            .with_context(|| format!("Failed to open audit log: {}", path))?;
+            .with_context(|| format!("Failed to open audit log: {path}"))?;
         file.write_all(line.as_bytes())?;
         Ok(())
     }

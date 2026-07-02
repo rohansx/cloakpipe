@@ -8,7 +8,7 @@ Rust-native · <5ms latency · 33+ entity types · 91.7% real-world protection �
 
 [Website](https://cloakpipe.co) · [Docs](https://docs.cloakpipe.co) · [Cloud Dashboard](https://app.cloakpipe.co) · [Discord](https://discord.gg/cloakpipe)
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/cloakpipe.svg)](https://crates.io/crates/cloakpipe)
 [![Docker](https://img.shields.io/docker/pulls/cloakpipe/cloakpipe.svg)](https://hub.docker.com/r/cloakpipe/cloakpipe)
 
@@ -35,35 +35,44 @@ Your App  ──▶  CloakPipe  ──▶  OpenAI / Anthropic / Any LLM
 
 ## Quick Start
 
-### Docker (recommended)
+### Build from source
 
 ```bash
-# Start CloakPipe
-docker run -p 3100:3100 ghcr.io/cloakpipe/cloakpipe:latest
+git clone https://github.com/rohansx/cloakpipe
+cd cloakpipe
+
+# Your upstream provider key is required (CloakPipe forwards to it)
+export OPENAI_API_KEY=sk-...
+
+# Start the proxy — writes a default cloakpipe.toml on first run,
+# listening on 127.0.0.1:8900
+cargo run -p cloakpipe-cli -- start
 
 # Point your OpenAI SDK at CloakPipe
-export OPENAI_BASE_URL=http://localhost:3100/v1
-
-# Done. All LLM calls now go through CloakPipe.
+export OPENAI_BASE_URL=http://127.0.0.1:8900/v1
 ```
 
-### Binary
+### Docker
 
 ```bash
-# Install via cargo
-cargo install cloakpipe
+docker build -t cloakpipe .
+docker run -p 8900:8900 -e OPENAI_API_KEY=sk-... cloakpipe
 
-# Or download the latest release
-curl -fsSL https://cloakpipe.co/install.sh | sh
-
-# Start the proxy
-cloakpipe serve --port 3100
+# Proxy is now reachable at http://localhost:8900/v1
+export OPENAI_BASE_URL=http://localhost:8900/v1
 ```
+
+The image binds `0.0.0.0:8900` and runs regex/heuristic detection with no model
+download. To use the neural detector, mount your own `cloakpipe.toml` (with
+`[detection.ner] enabled = true`) and the model files.
+
+> Prebuilt binaries, `cargo install cloakpipe`, and a published image
+> (`ghcr.io`) are on the roadmap — `docker build` or build from source for now.
 
 ### Verify it works
 
 ```bash
-curl http://localhost:3100/v1/chat/completions \
+curl http://127.0.0.1:8900/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -d '{
@@ -225,7 +234,7 @@ from openai import OpenAI
 
 # Just change the base URL. That's it.
 client = OpenAI(
-    base_url="http://localhost:3100/v1",  # CloakPipe proxy
+    base_url="http://127.0.0.1:8900/v1",  # CloakPipe proxy
     api_key="sk-your-openai-key"          # Your real API key
 )
 
@@ -248,7 +257,7 @@ from langchain_openai import ChatOpenAI
 
 llm = ChatOpenAI(
     model="gpt-4",
-    openai_api_base="http://localhost:3100/v1",  # CloakPipe proxy
+    openai_api_base="http://127.0.0.1:8900/v1",  # CloakPipe proxy
     openai_api_key="sk-your-key"
 )
 
@@ -261,7 +270,7 @@ response = llm.invoke("Summarize patient records for Aadhaar 2345 6789 0123")
 from anthropic import Anthropic
 
 client = Anthropic(
-    base_url="http://localhost:3100/v1/anthropic",  # CloakPipe proxy
+    base_url="http://127.0.0.1:8900/v1/anthropic",  # CloakPipe proxy
     api_key="sk-ant-your-key"
 )
 
@@ -278,7 +287,7 @@ message = client.messages.create(
 
 ```bash
 # Works with any LLM API that uses the OpenAI format
-curl http://localhost:3100/v1/chat/completions \
+curl http://127.0.0.1:8900/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -d '{
@@ -295,7 +304,7 @@ import { generateText } from 'ai';
 
 const result = await generateText({
   model: openai('gpt-4', {
-    baseURL: 'http://localhost:3100/v1',  // CloakPipe proxy
+    baseURL: 'http://127.0.0.1:8900/v1',  // CloakPipe proxy
   }),
   prompt: 'Analyze the customer data for Rajesh, Aadhaar 2345 6789 0123',
 });
@@ -306,24 +315,25 @@ const result = await generateText({
 ## CLI
 
 ```bash
-# Scan text for PII (no proxy, just detection)
-cloakpipe scan "Dr. Rajesh Singh, Aadhaar 2345 6789 0123"
+# Test detection on inline text (no proxy, just detection)
+cloakpipe test --text "Dr. Rajesh Singh, Aadhaar 2345 6789 0123"
 # Output:
 # ✓ PERSON: "Dr. Rajesh Singh" (confidence: 0.97)
 # ✓ AADHAAR: "2345 6789 0123" (confidence: 1.00)
 
-# Mask text (replace PII with tokens)
-cloakpipe mask "Contact Priya at priya@example.com or +91 98765 43210"
-# Output: "Contact PERSON_001 at EMAIL_001 or PHONE_001"
+# Scan & mask files/directories (recursively masks .txt/.md/.json/.csv)
+cloakpipe scan ./docs                      # writes masked copies to ./docs-masked
+cloakpipe scan ./docs --detect-only        # report only, no masking
 
-# Start the proxy server
-cloakpipe serve --port 3100
+# Create a config, then start the proxy server (listens on 127.0.0.1:8900)
+cloakpipe init                             # writes cloakpipe.toml
+cloakpipe start                            # edit cloakpipe.toml to change port/policy/upstream
 
-# Start with a specific policy
-cloakpipe serve --port 3100 --policy policies/dpdp.yaml
+# Check the proxy is up
+curl http://127.0.0.1:8900/health
 
-# Check proxy health
-cloakpipe health
+# Other commands: setup (guided), stats, mcp, tree, vector, sessions
+cloakpipe --help
 ```
 
 ---
@@ -334,7 +344,7 @@ cloakpipe health
 
 ```bash
 # Proxy settings
-CLOAKPIPE_PORT=3100                    # Proxy port (default: 3100)
+CLOAKPIPE_PORT=8900                    # Proxy port (default: 8900)
 CLOAKPIPE_HOST=0.0.0.0                # Bind address (default: 0.0.0.0)
 CLOAKPIPE_LOG_LEVEL=info               # Log level: debug, info, warn, error
 
@@ -343,7 +353,7 @@ CLOAKPIPE_UPSTREAM_URL=https://api.openai.com  # Default upstream LLM API
 CLOAKPIPE_TIMEOUT=30                   # Request timeout in seconds
 
 # Detection
-CLOAKPIPE_POLICY=policies/dpdp.yaml   # Policy file path
+CLOAKPIPE_POLICY=policies/dpdp.toml   # Policy file path
 CLOAKPIPE_MIN_CONFIDENCE=0.8          # Minimum NER confidence threshold (0.0–1.0)
 
 # Vault
@@ -359,7 +369,7 @@ CLOAKPIPE_CLOUD_TOKEN=                 # Cloud dashboard token (app.cloakpipe.co
 CloakPipe uses YAML policy files to configure detection behavior per compliance framework:
 
 ```yaml
-# policies/dpdp.yaml — India Digital Personal Data Protection Act
+# policies/dpdp.toml — India Digital Personal Data Protection Act
 name: "DPDP Act 2023"
 version: "1.0"
 description: "Policy for India's Digital Personal Data Protection Act"
@@ -400,7 +410,7 @@ logging:
   export_format: "json"        # json | csv
 ```
 
-Pre-built policies included: `dpdp.yaml`, `gdpr.yaml`, `hipaa.yaml`, `pci-dss.yaml`, `minimal.yaml`
+Pre-built policies included: `dpdp.toml`, `gdpr.toml`, `hipaa.toml`, `pci-dss.toml`, `minimal.toml`
 
 ---
 
@@ -424,10 +434,10 @@ cloakpipe/
 │   ├── cloakpipe-mcp        # MCP server (6 tools via rmcp)
 │   └── cloakpipe-cli        # CLI interface (scan, mask, serve, vault, session)
 ├── policies/
-│   ├── dpdp.yaml
-│   ├── gdpr.yaml
-│   ├── hipaa.yaml
-│   └── pci-dss.yaml
+│   ├── dpdp.toml
+│   ├── gdpr.toml
+│   ├── hipaa.toml
+│   └── pci-dss.toml
 ├── Cargo.toml
 ├── LICENSE
 └── README.md
@@ -456,7 +466,7 @@ Each crate is independently usable. If you only need PII detection in your Rust 
 
 Tested on 4 cross-domain scenarios (Slack threads, invoice emails, medical notes, legal documents) — messy, unpredictable text that real users paste into LLMs. Not crafted for any detection system.
 
-| Metric | CloakPipe (v0.9) | Regex Only | nvidia/gliner-PII |
+| Metric | CloakPipe (v0.10) | Regex Only | nvidia/gliner-PII |
 |---|---|---|---|
 | **PII protection rate** | **91.7%** (55/60) | 53.4% | 65.9% |
 | **Names detected** | ✅ | ❌ | ✅ |
@@ -528,21 +538,21 @@ CloakPipe helps you meet regulatory requirements by ensuring PII never reaches a
 
 | Framework | What CloakPipe provides | Can we claim it? |
 |---|---|---|
-| **DPDP Act 2023** (India) | Detects Aadhaar, PAN, UPI, GSTIN. Self-hosted mode keeps data within your infrastructure — no cross-border transfer of personal data. Pre-built `policies/dpdp.yaml` profile. | ✅ "Supports DPDP compliance" — no certification body exists; compliance is technical. |
+| **DPDP Act 2023** (India) | Detects Aadhaar, PAN, UPI, GSTIN. Self-hosted mode keeps data within your infrastructure — no cross-border transfer of personal data. Pre-built `policies/dpdp.toml` profile. | ✅ "Supports DPDP compliance" — no certification body exists; compliance is technical. |
 | **GDPR** (EU) | Pseudonymization is explicitly recognized under GDPR Art. 25 (data protection by design). Tokens replace personal data before it reaches any third-party processor. | ✅ "GDPR-ready" — self-attested or validated by legal counsel. |
 | **HIPAA** (US) | PHI detection (patient IDs, diagnoses, medications), AES-256-GCM encrypted vault, tamper-evident audit logs meet HIPAA Security Rule technical safeguards. | ✅ "Supports HIPAA workflows" — HIPAA has no official certification body. |
-| **PCI-DSS** | Credit card (PAN) detection with Luhn validation, encrypted vault, no plaintext storage. Pre-built `policies/pci-dss.yaml`. | ✅ "Supports PCI-DSS workflows" — formal QSA audit required for full certification. |
+| **PCI-DSS** | Credit card (PAN) detection with Luhn validation, encrypted vault, no plaintext storage. Pre-built `policies/pci-dss.toml`. | ✅ "Supports PCI-DSS workflows" — formal QSA audit required for full certification. |
 | **SOC 2 Type II** | Structured audit logging, access controls, and incident response processes in place. Formal audit in roadmap. | 🔜 In progress — will not claim until third-party audit is complete. |
 
 Pre-built policy files are included in [`policies/`](policies/):
 
 ```
 policies/
-├── dpdp.yaml      # India Digital Personal Data Protection Act 2023
-├── gdpr.yaml      # EU General Data Protection Regulation
-├── hipaa.yaml     # US Health Insurance Portability and Accountability Act
-├── pci-dss.yaml   # Payment Card Industry Data Security Standard
-└── minimal.yaml   # Minimal — only high-confidence structured PII
+├── dpdp.toml      # India Digital Personal Data Protection Act 2023
+├── gdpr.toml      # EU General Data Protection Regulation
+├── hipaa.toml     # US Health Insurance Portability and Accountability Act
+├── pci-dss.toml   # Payment Card Industry Data Security Standard
+└── minimal.toml   # Minimal — only high-confidence structured PII
 ```
 
 ---
@@ -555,20 +565,20 @@ policies/
 version: '3.8'
 services:
   cloakpipe:
-    image: ghcr.io/cloakpipe/cloakpipe:latest
+    build: .                       # uses the repo Dockerfile
     ports:
-      - "3100:3100"
+      - "8900:8900"
     environment:
-      - CLOAKPIPE_UPSTREAM_URL=https://api.openai.com
-      - CLOAKPIPE_POLICY=policies/dpdp.yaml
-      - CLOAKPIPE_LOG_LEVEL=info
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - cloakpipe-vault:/data/vault
+      - cloakpipe-data:/data       # vault + audit logs
     restart: unless-stopped
 
 volumes:
-  cloakpipe-vault:
+  cloakpipe-data:
 ```
+
+The bundled config already binds `0.0.0.0:8900` and stores state under `/data`.
 
 ### Systemd
 
@@ -579,7 +589,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cloakpipe serve --port 3100
+ExecStart=/usr/local/bin/cloakpipe start
 Restart=always
 Environment=CLOAKPIPE_UPSTREAM_URL=https://api.openai.com
 
@@ -606,7 +616,7 @@ git clone https://github.com/rohansx/cloakpipe.git
 cd cloakpipe
 cargo build
 cargo test
-cargo run -p cloakpipe-cli -- serve --port 3100
+cargo run -p cloakpipe-cli -- start
 ```
 
 ---
@@ -646,7 +656,7 @@ Do **not** file a public GitHub issue for security vulnerabilities.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 The CloakPipe Cloud dashboard and enterprise features are proprietary (BUSL-1.1).
 

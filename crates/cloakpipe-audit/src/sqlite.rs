@@ -28,7 +28,7 @@ impl SqliteAuditLogger {
         }
 
         let conn = Connection::open(path)
-            .with_context(|| format!("Failed to open audit database: {}", path))?;
+            .with_context(|| format!("Failed to open audit database: {path}"))?;
 
         conn.pragma_update(None, "journal_mode", "WAL")?;
 

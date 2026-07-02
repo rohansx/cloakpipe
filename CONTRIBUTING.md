@@ -64,4 +64,4 @@ If you discover a security vulnerability, **do not open a public issue**. Instea
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same dual license as the project: MIT OR Apache-2.0.
+By contributing, you agree that your contributions will be licensed under the same license as the project: MIT.

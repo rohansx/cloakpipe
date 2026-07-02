@@ -1,0 +1,36 @@
+# CloakPipe policy — minimal. Secrets/credentials only, lowest overhead.
+# Good starting point when you only care about leaked API keys/tokens.
+# Use it with:  cloakpipe -c policies/minimal.toml start
+
+[proxy]
+listen = "127.0.0.1:8900"
+upstream = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 120
+max_concurrent = 256
+mode = "proxy"
+
+[vault]
+path = "./vault.enc"
+encryption = "aes-256-gcm"
+key_env = "CLOAKPIPE_VAULT_KEY"
+
+[detection]
+secrets = true
+financial = false
+dates = false
+emails = false
+phone_numbers = false
+ip_addresses = false
+urls_internal = false
+
+[detection.ner]
+enabled = false
+
+[audit]
+enabled = true
+log_path = "./audit/"
+format = "jsonl"
+retention_days = 30
+log_entities = true
+log_mappings = false

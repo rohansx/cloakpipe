@@ -80,7 +80,7 @@ fn test_detect_internal_url() {
 fn test_detect_jwt() {
     let detector = Detector::from_config(&test_detection_config()).unwrap();
     let jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
-    let entities = detector.detect(&format!("Token: {}", jwt)).unwrap();
+    let entities = detector.detect(&format!("Token: {jwt}")).unwrap();
     assert!(entities.iter().any(|e| e.category == EntityCategory::Secret));
 }
 

@@ -10,10 +10,15 @@ class CloakPipeClient:
     """
     Thin HTTP client for the CloakPipe proxy API.
 
+    ``chat``, ``embed`` and ``health`` work against the open-source proxy.
+    ``detect``, ``pseudonymize``, ``detect_batch``, ``redact_document``,
+    ``guardrails`` and ``policies`` are **CloakPipe Cloud** features — point
+    ``base_url`` at ``https://api.cloakpipe.co`` and set ``cloud_api_key``.
+
     Can be used standalone or as the backend for LangChain/LlamaIndex wrappers.
 
     Args:
-        base_url: URL of your CloakPipe proxy (e.g. "http://localhost:3100").
+        base_url: URL of your CloakPipe proxy (e.g. "http://localhost:8900").
         api_key: Your upstream LLM API key. CloakPipe passes this through.
         token: Optional CloakPipe Cloud JWT token (for cloud features like batch detect).
         cloud_api_key: Optional CloakPipe Cloud API key (``cp_xxx``).
@@ -23,7 +28,7 @@ class CloakPipeClient:
     Example::
 
         client = CloakPipeClient(
-            base_url="http://localhost:3100",
+            base_url="http://localhost:8900",
             api_key="sk-your-openai-key",
         )
         response = client.chat("Summarize the file for Priya Mehta, PAN BNZPM2501F")
@@ -32,7 +37,7 @@ class CloakPipeClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:3100",
+        base_url: str = "http://localhost:8900",
         api_key: str = "",
         token: str | None = None,
         cloud_api_key: str | None = None,
@@ -242,7 +247,7 @@ class CloakPipeClient:
     def health(self) -> bool:
         """Check if the CloakPipe proxy is running."""
         try:
-            r = self._client.get(f"{self.base_url}/api/health")
+            r = self._client.get(f"{self.base_url}/health")
             return r.status_code == 200
         except Exception:
             return False

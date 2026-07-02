@@ -11,22 +11,22 @@ use crate::EntityCategory;
 pub fn generate(original: &str, category: &EntityCategory, id: u32) -> String {
     match category {
         EntityCategory::PhoneNumber => fake_phone(original, id),
-        EntityCategory::Email => format!("user{:03}@masked.invalid", id),
+        EntityCategory::Email => format!("user{id:03}@masked.invalid"),
         EntityCategory::IpAddress => format!("10.{}.{}.1", (id / 256) % 256, id % 256),
         EntityCategory::Amount => fake_amount(original, id),
-        EntityCategory::Date => format!("DATE_{:03}", id),
-        EntityCategory::Url => format!("https://masked-{:03}.invalid", id),
+        EntityCategory::Date => format!("DATE_{id:03}"),
+        EntityCategory::Url => format!("https://masked-{id:03}.invalid"),
         EntityCategory::Secret => fake_secret(original, id),
-        EntityCategory::Person => format!("User-{:03}", id),
-        EntityCategory::Organization => format!("Org-{:03}", id),
-        EntityCategory::Location => format!("Location-{:03}", id),
+        EntityCategory::Person => format!("User-{id:03}"),
+        EntityCategory::Organization => format!("Org-{id:03}"),
+        EntityCategory::Location => format!("Location-{id:03}"),
         EntityCategory::Custom(name) => {
             // For custom categories like Aadhaar, PAN, GSTIN, detect by name
             match name.to_uppercase().as_str() {
                 "AADHAAR" | "AADHAAR_NUMBER" => fake_aadhaar(id),
                 "PAN" | "PAN_CARD" => fake_pan(id),
                 "GSTIN" => fake_gstin(id),
-                "UPI" | "UPI_ID" => format!("user{:03}@okmasked", id),
+                "UPI" | "UPI_ID" => format!("user{id:03}@okmasked"),
                 _ => format!("{}-{:03}", name.to_uppercase(), id),
             }
         }
@@ -60,16 +60,16 @@ fn fake_phone(original: &str, id: u32) -> String {
         // India format: +91 XXXXX XXXXX
         let a = 55500 + (n % 99999);
         let b = 10000 + (n * 7 % 89999);
-        format!("+91 {:05} {:05}", a, b)
+        format!("+91 {a:05} {b:05}")
     } else if original.starts_with("+1") || original.starts_with("1-") {
         // US format: +1-555-XXX-XXXX
         let a = 100 + (n % 899);
         let b = 1000 + (n * 3 % 8999);
-        format!("+1-555-{:03}-{:04}", a, b)
+        format!("+1-555-{a:03}-{b:04}")
     } else {
         // Generic
         let a = 5_550_000_000_u64 + (n * 13 % 9_999_999);
-        format!("{:010}", a)
+        format!("{a:010}")
     }
 }
 
@@ -78,7 +78,7 @@ fn fake_aadhaar(id: u32) -> String {
     let a = 5555 + (n % 4444);
     let b = 1000 + (n * 7 % 8999);
     let c = 1000 + (n * 13 % 8999);
-    format!("{:04} {:04} {:04}", a, b, c)
+    format!("{a:04} {b:04} {c:04}")
 }
 
 fn fake_pan(id: u32) -> String {
@@ -102,7 +102,7 @@ fn fake_gstin(id: u32) -> String {
 fn fake_amount(original: &str, id: u32) -> String {
     let n = (id as u64) * 1234 + 100;
     if original.contains('₹') || original.to_lowercase().contains("inr") {
-        format!("₹{}", n)
+        format!("₹{n}")
     } else if original.contains('$') {
         format!("${}.{:02}", n / 100, n % 100)
     } else if original.contains('€') {
@@ -125,9 +125,9 @@ fn fake_secret(original: &str, id: u32) -> String {
             let c = b"ABCDEFGHJKLMNPQRSTUVWXYZ0123456789";
             c[(id as usize + i * 7) % c.len()] as char
         }).collect();
-        format!("{}{}", prefix, suffix)
+        format!("{prefix}{suffix}")
     } else {
-        format!("MASKED-SECRET-{:04}", id)
+        format!("MASKED-SECRET-{id:04}")
     }
 }
 

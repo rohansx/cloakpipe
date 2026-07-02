@@ -65,7 +65,7 @@ pub async fn proxy_chat_completions(
         .await
         .map_err(|e| {
             tracing::error!(request_id = %request_id, "Pseudonymization failed: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Pseudonymization failed: {}", e))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Pseudonymization failed: {e}"))
         })?;
 
     tracing::info!(
@@ -95,7 +95,7 @@ pub async fn proxy_chat_completions(
 
     let upstream_resp = req.send().await.map_err(|e| {
         tracing::error!(request_id = %request_id, "Upstream request failed: {}", e);
-        (StatusCode::BAD_GATEWAY, format!("Upstream request failed: {}", e))
+        (StatusCode::BAD_GATEWAY, format!("Upstream request failed: {e}"))
     })?;
 
     let status = upstream_resp.status();
@@ -122,11 +122,11 @@ pub async fn proxy_chat_completions(
             .unwrap())
     } else {
         let resp_text = upstream_resp.text().await.map_err(|e| {
-            (StatusCode::BAD_GATEWAY, format!("Failed to read upstream response: {}", e))
+            (StatusCode::BAD_GATEWAY, format!("Failed to read upstream response: {e}"))
         })?;
 
         let mut resp_json: Value = serde_json::from_str(&resp_text).map_err(|e| {
-            (StatusCode::BAD_GATEWAY, format!("Invalid upstream JSON: {}", e))
+            (StatusCode::BAD_GATEWAY, format!("Invalid upstream JSON: {e}"))
         })?;
 
         // --- Response output scanning ---
@@ -155,7 +155,7 @@ pub async fn proxy_chat_completions(
                             // Redact leaked entities by replacing with [REDACTED]
                             let mut redacted = content.clone();
                             // Sort descending by start so replacements don't shift offsets
-                            scan_entities.sort_by(|a, b| b.start.cmp(&a.start));
+                            scan_entities.sort_by_key(|b| std::cmp::Reverse(b.start));
                             for entity in &scan_entities {
                                 redacted.replace_range(entity.start..entity.end, "[REDACTED]");
                             }
@@ -207,7 +207,7 @@ pub async fn proxy_embeddings(
         .await
         .map_err(|e| {
             tracing::error!(request_id = %request_id, "Pseudonymization failed: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Pseudonymization failed: {}", e))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Pseudonymization failed: {e}"))
         })?;
 
     tracing::info!(
@@ -234,7 +234,7 @@ pub async fn proxy_embeddings(
 
     let upstream_resp = req.send().await.map_err(|e| {
         tracing::error!(request_id = %request_id, "Upstream request failed: {}", e);
-        (StatusCode::BAD_GATEWAY, format!("Upstream request failed: {}", e))
+        (StatusCode::BAD_GATEWAY, format!("Upstream request failed: {e}"))
     })?;
 
     let status = upstream_resp.status();
@@ -268,7 +268,7 @@ pub async fn session_inspect(
         .sessions
         .inspect(&session_id)
         .map(Json)
-        .ok_or((StatusCode::NOT_FOUND, format!("Session {} not found", session_id)))
+        .ok_or((StatusCode::NOT_FOUND, format!("Session {session_id} not found")))
 }
 
 pub async fn session_flush(

@@ -1,0 +1,14 @@
+/target
+**/target
+.git
+.github
+models/
+*.enc
+audit/
+trees/
+integrations/python/.venv
+integrations/python/dist
+**/__pycache__
+benchmarks/results
+*.md
+!README.md

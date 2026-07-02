@@ -13,8 +13,8 @@ use cloakpipe_proxy::{server, state::AppState};
 /// Load configuration from TOML file.
 fn load_config(path: &str) -> Result<CloakPipeConfig> {
     let content =
-        std::fs::read_to_string(path).with_context(|| format!("Cannot read config: {}", path))?;
-    toml::from_str(&content).with_context(|| format!("Invalid config in: {}", path))
+        std::fs::read_to_string(path).with_context(|| format!("Cannot read config: {path}"))?;
+    toml::from_str(&content).with_context(|| format!("Invalid config in: {path}"))
 }
 
 /// Resolve the vault encryption key from environment variable.
@@ -27,7 +27,7 @@ fn resolve_vault_key(config: &CloakPipeConfig) -> Result<Vec<u8>> {
     match std::env::var(env_var) {
         Ok(hex_key) => {
             let bytes = hex_decode(&hex_key)
-                .with_context(|| format!("{} must be a 64-char hex string (32 bytes)", env_var))?;
+                .with_context(|| format!("{env_var} must be a 64-char hex string (32 bytes)"))?;
             if bytes.len() != 32 {
                 bail!(
                     "{} must be 32 bytes (got {} bytes). Use a 64-char hex string.",
@@ -59,7 +59,7 @@ fn hex_decode(hex: &str) -> Result<Vec<u8>> {
         .step_by(2)
         .map(|i| {
             u8::from_str_radix(&hex[i..i + 2], 16)
-                .with_context(|| format!("Invalid hex at position {}", i))
+                .with_context(|| format!("Invalid hex at position {i}"))
         })
         .collect()
 }
@@ -97,7 +97,7 @@ pub async fn test(config_path: &str, text: Option<String>, file: Option<String>)
     let input = match (text, file) {
         (Some(t), _) => t,
         (_, Some(f)) => std::fs::read_to_string(&f)
-            .with_context(|| format!("Cannot read file: {}", f))?,
+            .with_context(|| format!("Cannot read file: {f}"))?,
         (None, None) => {
             // Default sample text
             "Tata Motors reported revenue of $1.2M in Q3 2025. Contact: cfo@tatamotors.com. \
@@ -117,7 +117,7 @@ pub async fn test(config_path: &str, text: Option<String>, file: Option<String>)
     let mut vault = Vault::ephemeral();
 
     println!("\n--- Input ---");
-    println!("{}", input);
+    println!("{input}");
 
     let entities = detector.detect(&input)?;
     println!("\n--- Detected Entities ({}) ---", entities.len());
@@ -161,7 +161,7 @@ pub async fn stats(config_path: &str) -> Result<()> {
     if !stats.categories.is_empty() {
         println!("Categories:");
         for (cat, count) in &stats.categories {
-            println!("  {}: {}", cat, count);
+            println!("  {cat}: {count}");
         }
     }
 
@@ -172,13 +172,13 @@ pub async fn stats(config_path: &str) -> Result<()> {
 pub async fn init() -> Result<()> {
     let path = "cloakpipe.toml";
     if std::path::Path::new(path).exists() {
-        bail!("{} already exists", path);
+        bail!("{path} already exists");
     }
 
     let config = default_config();
     let toml_str = toml::to_string_pretty(&config)?;
     std::fs::write(path, toml_str)?;
-    println!("Created {}", path);
+    println!("Created {path}");
     println!("\nNext steps:");
     println!("  1. Set OPENAI_API_KEY (or your upstream API key)");
     println!("  2. Set CLOAKPIPE_VAULT_KEY (64-char hex string for encryption)");
@@ -273,9 +273,9 @@ pub async fn setup() -> Result<()> {
     let toml_str = toml::to_string_pretty(&config)?;
     std::fs::write(path, &toml_str)?;
 
-    println!("\nCreated {} with profile: {}", path, profile);
+    println!("\nCreated {path} with profile: {profile}");
     println!("\nNext steps:");
-    println!("  1. Set {} (your API key)", api_key_env);
+    println!("  1. Set {api_key_env} (your API key)");
     println!("  2. Set CLOAKPIPE_VAULT_KEY=$(openssl rand -hex 32)");
     println!("  3. Run: cloakpipe start");
 
@@ -336,9 +336,9 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
             println!("  Depth:  {}", tree_index.max_depth());
             println!("  Pages:  {}", tree_index.total_pages);
             if let Some(desc) = &tree_index.description {
-                println!("  Desc:   {}", desc);
+                println!("  Desc:   {desc}");
             }
-            println!("  Saved:  {}", path);
+            println!("  Saved:  {path}");
         }
 
         crate::TreeCommands::Search { index, query } => {
@@ -354,7 +354,7 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
 
             let result = searcher.search(&tree_index, &query).await?;
 
-            println!("Search results for: {}", query);
+            println!("Search results for: {query}");
             println!("  Reasoning: {}", result.reasoning);
             if let Some(conf) = result.confidence {
                 println!("  Confidence: {:.0}%", conf * 100.0);
@@ -378,7 +378,7 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
             } else {
                 println!("Tree indices ({}):", trees.len());
                 for (id, source) in &trees {
-                    println!("  {} -> {}", id, source);
+                    println!("  {id} -> {source}");
                 }
             }
         }
@@ -406,7 +406,7 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
                     &tree_index,
                     &tree_config.storage_path,
                 )?;
-                println!("Index saved: {}\n", path);
+                println!("Index saved: {path}\n");
                 (tree_index, pages)
             };
 
@@ -434,10 +434,9 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
             // Send to LLM for final answer
             let prompt = format!(
                 "Based on the following document excerpts, answer the question.\n\n\
-                 EXCERPTS:\n{}\n\n\
-                 QUESTION: {}\n\n\
-                 Answer concisely based only on the provided excerpts.",
-                context_text, question
+                 EXCERPTS:\n{context_text}\n\n\
+                 QUESTION: {question}\n\n\
+                 Answer concisely based only on the provided excerpts."
             );
 
             let body = serde_json::json!({
@@ -454,7 +453,7 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
             let client = reqwest::Client::new();
             let response = client
                 .post(&url)
-                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Authorization", format!("Bearer {api_key}"))
                 .json(&body)
                 .send()
                 .await?
@@ -465,12 +464,12 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
                 .as_str()
                 .unwrap_or("No answer generated");
 
-            println!("Question: {}\n", question);
+            println!("Question: {question}\n");
             println!("Sources ({}):", result.node_ids.len());
             for c in &content {
                 println!("  [{}] {} (pages {}-{})", c.node_id, c.title, c.pages.0, c.pages.1);
             }
-            println!("\nAnswer:\n{}", answer);
+            println!("\nAnswer:\n{answer}");
         }
 
         crate::TreeCommands::Show { index } => {
@@ -484,11 +483,11 @@ pub async fn tree(config_path: &str, action: crate::TreeCommands) -> Result<()> 
             println!("  Depth:   {}", tree_index.max_depth());
             println!("  Created: {}", tree_index.created_at);
             if let Some(desc) = &tree_index.description {
-                println!("  Desc:    {}", desc);
+                println!("  Desc:    {desc}");
             }
             println!("\nTree structure:");
             for entry in tree_index.navigation_map() {
-                println!("  {}", entry);
+                println!("  {entry}");
             }
         }
     }
@@ -505,7 +504,7 @@ pub async fn vector(action: crate::VectorCommands) -> Result<()> {
             let mut enc = cloakpipe_vector::AdcpeEncryptor::new(&key, &config)?;
 
             let data = std::fs::read_to_string(&input)
-                .with_context(|| format!("Cannot read: {}", input))?;
+                .with_context(|| format!("Cannot read: {input}"))?;
             let vectors: Vec<Vec<f64>> = serde_json::from_str(&data)
                 .context("Input must be a JSON array of float arrays")?;
 
@@ -522,7 +521,7 @@ pub async fn vector(action: crate::VectorCommands) -> Result<()> {
             let enc = cloakpipe_vector::AdcpeEncryptor::new(&key, &config)?;
 
             let data = std::fs::read_to_string(&input)
-                .with_context(|| format!("Cannot read: {}", input))?;
+                .with_context(|| format!("Cannot read: {input}"))?;
             let encrypted: Vec<Vec<f64>> = serde_json::from_str(&data)
                 .context("Input must be a JSON array of float arrays")?;
 
@@ -555,11 +554,11 @@ pub async fn vector(action: crate::VectorCommands) -> Result<()> {
                 .map(|(x, y)| (x - y).abs())
                 .fold(0.0, f64::max);
 
-            println!("ADCPE Test (dim={})", dim);
-            println!("  Cosine similarity (original):  {:.6}", cos_orig);
-            println!("  Cosine similarity (encrypted): {:.6}", cos_enc);
+            println!("ADCPE Test (dim={dim})");
+            println!("  Cosine similarity (original):  {cos_orig:.6}");
+            println!("  Cosine similarity (encrypted): {cos_enc:.6}");
             println!("  Distance preserved: {}", if (cos_orig - cos_enc).abs() < 1e-10 { "YES" } else { "NO" });
-            println!("  Roundtrip max error: {:.2e}", max_err);
+            println!("  Roundtrip max error: {max_err:.2e}");
             println!("  Roundtrip exact: {}", if max_err < 1e-10 { "YES" } else { "NO" });
         }
     }
@@ -573,7 +572,7 @@ fn resolve_vector_key() -> Result<[u8; 32]> {
     match std::env::var(env_var) {
         Ok(hex_key) => {
             let bytes = hex_decode(&hex_key)
-                .with_context(|| format!("{} must be a 64-char hex string", env_var))?;
+                .with_context(|| format!("{env_var} must be a 64-char hex string"))?;
             if bytes.len() != 32 {
                 bail!("{} must be 32 bytes (got {})", env_var, bytes.len());
             }
@@ -655,7 +654,7 @@ pub async fn scan(
     let files = collect_scannable_files(input_path)?;
 
     if files.is_empty() {
-        println!("No scannable files found in: {}", input);
+        println!("No scannable files found in: {input}");
         return Ok(());
     }
 
@@ -664,7 +663,7 @@ pub async fn scan(
     } else {
         let dir = output.unwrap_or_else(|| format!("{}-masked", input.trim_end_matches('/')));
         std::fs::create_dir_all(&dir)
-            .with_context(|| format!("Cannot create output dir: {}", dir))?;
+            .with_context(|| format!("Cannot create output dir: {dir}"))?;
         Some(dir)
     };
 
@@ -696,7 +695,7 @@ pub async fn scan(
             file_results.push((rel_path.clone(), entity_count));
 
             if detect_only {
-                println!("  {} — {} entities", rel_path, entity_count);
+                println!("  {rel_path} — {entity_count} entities");
                 for e in &entities {
                     println!(
                         "    [{:?}] \"{}\" (confidence: {:.0}%, source: {:?})",
@@ -734,26 +733,26 @@ pub async fn scan(
 
     println!("\n--- Scan Summary ---");
     println!("  Files scanned:  {}", files.len());
-    println!("  Files with PII: {}", total_files);
-    println!("  Total entities: {}", total_entities);
-    println!("  Strategy:       {}", strategy);
+    println!("  Files with PII: {total_files}");
+    println!("  Total entities: {total_entities}");
+    println!("  Strategy:       {strategy}");
     println!("  Min confidence: {:.0}%", min_confidence * 100.0);
 
     if let Some(ref out_dir) = output_dir {
         // Save vault mappings as JSON for rehydration
-        let mappings_path = format!("{}/vault-mappings.json", out_dir);
+        let mappings_path = format!("{out_dir}/vault-mappings.json");
         let mappings = vault.reverse_mappings();
         let json = serde_json::to_string_pretty(&mappings)?;
         std::fs::write(&mappings_path, json)?;
 
-        println!("  Output dir:     {}", out_dir);
-        println!("  Vault mappings: {}", mappings_path);
+        println!("  Output dir:     {out_dir}");
+        println!("  Vault mappings: {mappings_path}");
     }
 
     if !file_results.is_empty() && !detect_only {
         println!("\n  Files masked:");
         for (path, count) in &file_results {
-            println!("    {} ({} entities)", path, count);
+            println!("    {path} ({count} entities)");
         }
     }
 
@@ -811,7 +810,7 @@ pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Resu
     match action {
         crate::SessionCommands::List => {
             let resp = client
-                .get(format!("{}/sessions", base))
+                .get(format!("{base}/sessions"))
                 .send()
                 .await
                 .context("Cannot reach proxy — is it running?")?
@@ -823,7 +822,7 @@ pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Resu
                 println!("No active sessions.");
                 println!("Sessions are created when requests include x-session-id header.");
             } else {
-                println!("Active sessions ({}):\n", sessions);
+                println!("Active sessions ({sessions}):\n");
                 for sess in resp.as_array().unwrap() {
                     println!(
                         "  {} | {} msgs | {} entities | sensitivity: {} | last: {}",
@@ -839,17 +838,17 @@ pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Resu
 
         crate::SessionCommands::Inspect { session_id } => {
             let resp = client
-                .get(format!("{}/sessions/{}", base, session_id))
+                .get(format!("{base}/sessions/{session_id}"))
                 .send()
                 .await
                 .context("Cannot reach proxy — is it running?")?;
 
             if resp.status() == 404 {
-                bail!("Session {} not found", session_id);
+                bail!("Session {session_id} not found");
             }
 
             let stats: serde_json::Value = resp.json().await?;
-            println!("Session: {}", session_id);
+            println!("Session: {session_id}");
             println!("  Messages:      {}", stats["message_count"]);
             println!("  Entities:      {}", stats["entity_count"]);
             println!("  Coreferences:  {}", stats["coreference_count"]);
@@ -863,7 +862,7 @@ pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Resu
             if let Some(cats) = stats["categories"].as_object() {
                 println!("  Categories:");
                 for (cat, count) in cats {
-                    println!("    {}: {}", cat, count);
+                    println!("    {cat}: {count}");
                 }
             }
             println!("  Created:       {}", stats["created_at"].as_str().unwrap_or("?"));
@@ -872,7 +871,7 @@ pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Resu
 
         crate::SessionCommands::Flush { session_id } => {
             let resp = client
-                .delete(format!("{}/sessions/{}", base, session_id))
+                .delete(format!("{base}/sessions/{session_id}"))
                 .send()
                 .await
                 .context("Cannot reach proxy — is it running?")?
@@ -880,15 +879,15 @@ pub async fn sessions(config_path: &str, action: crate::SessionCommands) -> Resu
                 .await?;
 
             if resp["flushed"].as_bool() == Some(true) {
-                println!("Session {} flushed.", session_id);
+                println!("Session {session_id} flushed.");
             } else {
-                println!("Session {} not found.", session_id);
+                println!("Session {session_id} not found.");
             }
         }
 
         crate::SessionCommands::FlushAll => {
             let resp = client
-                .delete(format!("{}/sessions", base))
+                .delete(format!("{base}/sessions"))
                 .send()
                 .await
                 .context("Cannot reach proxy — is it running?")?
