@@ -45,8 +45,8 @@ pub fn compute_hash(record: &LedgerRecord) -> [u8; 32] {
 /// success.
 pub fn verify_chain(records: &[LedgerRecord]) -> Result<[u8; 32], ChainLinkError> {
     let mut prev = GENESIS_HASH;
-    let mut expected_seq = 0u64;
-    for r in records {
+    for (expected_seq, r) in records.iter().enumerate() {
+        let expected_seq = expected_seq as u64;
         if r.seq != expected_seq {
             return Err(ChainLinkError::SeqMismatch {
                 expected: expected_seq,
@@ -61,7 +61,6 @@ pub fn verify_chain(records: &[LedgerRecord]) -> Result<[u8; 32], ChainLinkError
             return Err(ChainLinkError::PrevHashMismatch);
         }
         prev = h;
-        expected_seq += 1;
     }
     Ok(prev)
 }

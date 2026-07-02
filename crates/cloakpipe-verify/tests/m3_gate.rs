@@ -25,7 +25,7 @@ use cloakpipe_anchor::anchor::{LogBackend, TsaBackend};
 use cloakpipe_anchor::anchor::tsa::InProcessTsa;
 use cloakpipe_anchor::batch::build_signed_batch_head;
 use cloakpipe_anchor::merkle::{leaf_hash, MerkleTree};
-use cloakpipe_anchor::receipt::{subject_hash_for, AnchorReceipt, LogProofStep, SignedTreeHead};
+use cloakpipe_anchor::receipt::{AnchorReceipt, SignedTreeHead};
 use cloakpipe_verify::anchor::{verify_anchors, verify_inclusion_proofs};
 use cloakpipe_verify::bundle::{
     AnchorReceiptRef, BatchHead, Bundle, InclusionProofRef, ProofStepRef, Record, SignedBatchHead,
@@ -343,22 +343,15 @@ fn gate_back_dating_detected() {
 #[test]
 fn gate_subject_hash_tamper_fails_anchor() {
     let (mut bundle, _) = build_anchored_bundle();
-    // Change the receipt's subject_hash to a wrong value.
-    for r in bundle.anchor_receipts.iter_mut() {
+    // Change the first receipt's subject_hash to a wrong value.
+    if let Some(r) = bundle.anchor_receipts.first_mut() {
         match r {
-            AnchorReceiptRef::Tsa { subject_hash, .. } => {
+            AnchorReceiptRef::Tsa { subject_hash, .. }
+            | AnchorReceiptRef::Log { subject_hash, .. } => {
                 let mut s = subject_hash.clone();
                 let c = s.remove(0);
                 s.insert(0, if c == '0' { 'f' } else { '0' });
                 *subject_hash = s;
-                break;
-            }
-            AnchorReceiptRef::Log { subject_hash, .. } => {
-                let mut s = subject_hash.clone();
-                let c = s.remove(0);
-                s.insert(0, if c == '0' { 'f' } else { '0' });
-                *subject_hash = s;
-                break;
             }
         }
     }
@@ -415,7 +408,7 @@ fn gate_per_record_inclusion_proof_tamper_fails_proofs() {
 }
 
 // Silence unused imports used only in helper closures.
-#[allow(dead_code)]
+#[allow(dead_code, unused_doc_comments)]
 fn _unused() {
     let _ = leaf_hash;
     let _: Option<SignedTreeHead> = None;

@@ -69,6 +69,7 @@ pub enum AnchorVerifyError {
 /// Byte-compatible with the JSON wire format; the verifier defines
 /// its own type to stay standalone.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct SthRef {
     log_id: String,
     tree_size: u64,
@@ -462,11 +463,11 @@ fn parse_rfc3339(s: &str) -> Result<i64, ()> {
 
     // datetime is "YYYY-MM-DDTHH:MM:SS"
     let b = datetime.as_bytes();
-    if b.len() != 19 || b[4] != b'/' as u8 /* placeholder */
+    if b.len() != 19 || b[4] != b'/' /* placeholder */
     {
         // Just check structure.
     }
-    if b.len() != 19 || b[4] != b'-' as u8 || b[10] != b'T' as u8 {
+    if b.len() != 19 || b[4] != b'-' || b[10] != b'T' {
         return Err(());
     }
     let year: i64 = std::str::from_utf8(&b[0..4]).map_err(|_| ())?.parse().map_err(|_| ())?;
@@ -489,9 +490,7 @@ fn parse_rfc3339(s: &str) -> Result<i64, ()> {
 fn days_from_civil(y: i64, m: i64, d: i64) -> Option<i64> {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as i64;
-    let m = m as i64;
-    let d = d as i64;
+    let yoe = y - era * 400;
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     Some(era * 146097 + doe - 719468)
@@ -507,7 +506,7 @@ fn hex_lower(bytes: &[u8]) -> String {
 }
 
 fn hex_to_string(s: &str) -> Result<String, ()> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(());
     }
     let bytes = (0..s.len())

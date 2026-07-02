@@ -3,7 +3,9 @@
 //! Pure functions, no I/O, no global state. Every check returns a
 //! [`VerifyError`] with a category a CI script can pattern-match on.
 
-use crate::bundle::{BatchHead, Bundle, Hex32, Record};
+use crate::bundle::{BatchHead, Bundle, Hex32};
+#[cfg(test)]
+use crate::bundle::Record;
 use ed25519_dalek::{Signature as DalekSig, Verifier as DalekVerifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -114,10 +116,10 @@ pub fn decode_hex_32(s: &str) -> Result<[u8; 32], VerifyError> {
 /// On success, returns the final record_hash (chain tip).
 pub fn verify_chain(bundle: &Bundle) -> Result<Hex32, VerifyError> {
     let mut prev = "0".repeat(64);
-    let mut expected_seq = 0u64;
     let mut last_hash: Option<String> = None;
 
-    for r in &bundle.records {
+    for (expected_seq, r) in bundle.records.iter().enumerate() {
+        let expected_seq = expected_seq as u64;
         if r.seq != expected_seq {
             return Err(VerifyError::SeqGap {
                 seq: r.seq,
@@ -145,7 +147,6 @@ pub fn verify_chain(bundle: &Bundle) -> Result<Hex32, VerifyError> {
         }
         prev = r.record_hash.clone();
         last_hash = Some(r.record_hash.clone());
-        expected_seq += 1;
     }
     Ok(last_hash.unwrap_or_else(|| "0".repeat(64)))
 }

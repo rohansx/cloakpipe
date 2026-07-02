@@ -48,11 +48,11 @@ fn gate_append_10k_records_and_verify_chain() {
     chain::verify_chain(&records).expect("10k-record chain must verify");
 }
 
-/// Fuzz: feed the builder 1000 random strings as metadata, none should
-/// produce a record that *contains* the seed verbatim if the seed looks
-/// PII-shaped. We can't directly observe "rejected" because proptest
-/// strategies also produce clean inputs — instead, we assert that for
-/// every seed that *does* contain a PII marker, the build rejects.
+// Fuzz: feed the builder 1000 random strings as metadata, none should
+// produce a record that *contains* the seed verbatim if the seed looks
+// PII-shaped. We can't directly observe "rejected" because proptest
+// strategies also produce clean inputs — instead, we assert that for
+// every seed that *does* contain a PII marker, the build rejects.
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(1000))]
 

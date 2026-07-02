@@ -101,7 +101,7 @@ impl MerkleTree {
         let mut levels = vec![hashed_leaves];
         while levels.last().unwrap().len() > 1 {
             let prev = levels.last().unwrap();
-            let mut next = Vec::with_capacity((prev.len() + 1) / 2);
+            let mut next = Vec::with_capacity(prev.len().div_ceil(2));
             let mut i = 0;
             while i < prev.len() {
                 let left = prev[i];
@@ -131,7 +131,7 @@ impl MerkleTree {
         let mut idx = index;
         for level in 0..self.levels.len() - 1 {
             let cur = &self.levels[level];
-            let sibling_idx = if idx % 2 == 0 { idx + 1 } else { idx - 1 };
+            let sibling_idx = if idx.is_multiple_of(2) { idx + 1 } else { idx - 1 };
             let sibling = if sibling_idx < cur.len() {
                 cur[sibling_idx]
             } else {
@@ -140,7 +140,7 @@ impl MerkleTree {
                 // builder. The "sibling" is the leaf itself.
                 cur[idx]
             };
-            let position = if idx % 2 == 0 {
+            let position = if idx.is_multiple_of(2) {
                 ProofPosition::Right
             } else {
                 ProofPosition::Left
@@ -210,10 +210,10 @@ mod tests {
         let leaves: Vec<Vec<u8>> = (0..16).map(|i| format!("leaf-{i}").into_bytes()).collect();
         let t = MerkleTree::from_leaves(&leaves);
         let root = t.root();
-        for i in 0..leaves.len() {
+        for (i, leaf) in leaves.iter().enumerate() {
             let p = t.inclusion_proof(i);
             assert!(
-                verify_inclusion(&root, &leaves[i], &p),
+                verify_inclusion(&root, leaf, &p),
                 "proof failed for leaf {i}"
             );
         }
@@ -255,9 +255,9 @@ mod tests {
         let leaves: Vec<Vec<u8>> = (0..5).map(|i| format!("L{i}").into_bytes()).collect();
         let t = MerkleTree::from_leaves(&leaves);
         let root = t.root();
-        for i in 0..leaves.len() {
+        for (i, leaf) in leaves.iter().enumerate() {
             let p = t.inclusion_proof(i);
-            assert!(verify_inclusion(&root, &leaves[i], &p), "leaf {i}");
+            assert!(verify_inclusion(&root, leaf, &p), "leaf {i}");
         }
     }
 

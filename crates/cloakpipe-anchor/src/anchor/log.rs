@@ -20,7 +20,7 @@
 //! implemented here. The shapes are compatible at the level a
 //! future integration would target.
 
-use crate::anchor::{AnchorError, Backend};
+use crate::anchor::AnchorError;
 use crate::batch::SignedBatchHead;
 use crate::merkle::{leaf_hash, MerkleTree};
 use crate::receipt::{
@@ -56,12 +56,12 @@ impl LogBackend {
     }
 
     pub fn public_key(&self) -> [u8; 32] {
-        use ed25519_dalek::Verifier;
+        
         self.key.verifying_key().to_bytes()
     }
 
     pub fn verifying_key(&self) -> ed25519_dalek::VerifyingKey {
-        use ed25519_dalek::Verifier;
+        
         self.key.verifying_key()
     }
 

@@ -143,11 +143,8 @@ mod tests {
         let s2 = Ed25519Signer::generate();
         let r = record(0);
         let mut sig = s1.sign(&r);
-        if let Signature::Ed25519 { pk, .. } = &mut sig {
-            *pk = s2.public_key();
-        } else {
-            panic!("expected Ed25519");
-        }
+        let Signature::Ed25519 { pk, .. } = &mut sig;
+        *pk = s2.public_key();
         assert_eq!(verify(&r, &sig), Err(SignError::VerificationFailed));
     }
 

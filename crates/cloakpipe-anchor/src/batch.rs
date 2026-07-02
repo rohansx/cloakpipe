@@ -73,6 +73,7 @@ impl<'a> From<&'a SignedBatchHead> for BatchHeadUnsigned<'a> {
 
 /// Convenience: build a `SignedBatchHead` from its unsigned parts and
 /// a signature value (hex-encoded).
+#[allow(clippy::too_many_arguments)]
 pub fn build_signed_batch_head(
     batch_id: impl Into<String>,
     first_seq: u64,
@@ -105,7 +106,7 @@ mod tests {
 
     #[test]
     fn fields_round_trip_json() {
-        let sig_hex: String = std::iter::repeat('a').take(128).collect();
+        let sig_hex: String = std::iter::repeat_n('a', 128).collect();
         let h = build_signed_batch_head(
             "b1",
             0,
@@ -124,7 +125,7 @@ mod tests {
 
     #[test]
     fn unsigned_view_excludes_signature_value() {
-        let sig_hex: String = std::iter::repeat('7').take(128).collect();
+        let sig_hex: String = std::iter::repeat_n('7', 128).collect();
         let h = build_signed_batch_head(
             "b1",
             0,

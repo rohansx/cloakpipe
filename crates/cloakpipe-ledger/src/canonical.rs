@@ -30,11 +30,10 @@ pub fn canonicalize(r: &LedgerRecord) -> Vec<u8> {
     for d in &r.detections {
         write!(
             s,
-            "({}|{}|{}|{})",
+            "({}|{}|{}|<confidence>)",
             d.entity_type,
             d.count,
-            d.detector.tag(),
-            "<confidence>"
+            d.detector.tag()
         )
         .unwrap();
     }

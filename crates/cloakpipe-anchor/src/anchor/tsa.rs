@@ -276,7 +276,7 @@ mod tests {
     use crate::batch::build_signed_batch_head;
 
     fn dummy_head() -> SignedBatchHead {
-        let sig_hex: String = std::iter::repeat('0').take(128).collect();
+        let sig_hex: String = std::iter::repeat_n('0', 128).collect();
         build_signed_batch_head(
             "b1",
             0,
