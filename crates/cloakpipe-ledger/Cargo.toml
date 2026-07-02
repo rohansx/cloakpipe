@@ -20,7 +20,11 @@ hex = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = { workspace = true }
 zeroize = { workspace = true }
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
 proptest = "1"
+
+[[bin]]
+name = "ledger-export-fixture"
+path = "bin/export-fixture.rs"

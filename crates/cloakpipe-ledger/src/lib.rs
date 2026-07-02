@@ -18,6 +18,7 @@
 
 pub mod canonical;
 pub mod chain;
+pub mod export;
 pub mod record;
 pub mod sign;
 pub mod store;
