@@ -1,0 +1,16 @@
+[package]
+name = "cloakleak-cli"
+version.workspace = true
+edition.workspace = true
+license = "Apache-2.0"
+repository.workspace = true
+description = "CloakLeak CLI — run a SUT against the public corpus and emit a scoreboard"
+
+[[bin]]
+name = "cloakleak"
+path = "src/main.rs"
+
+[dependencies]
+cloakleak = { path = "../cloakleak" }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

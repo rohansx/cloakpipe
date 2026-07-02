@@ -1,0 +1,17 @@
+[package]
+name = "cloakleak"
+version.workspace = true
+edition.workspace = true
+license = "Apache-2.0"
+repository.workspace = true
+description = "CloakLeak — public PII-leak benchmark for LLM privacy middleware (CloakPipe authority play)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

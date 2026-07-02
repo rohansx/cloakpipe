@@ -1,0 +1,32 @@
+name: cloakleak gate
+
+on:
+  push:
+    paths:
+      - "crates/cloakleak/**"
+      - "crates/cloakleak-cli/**"
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build -p cloakleak -p cloakleak-cli
+      - name: Test (unit + gate)
+        run: cargo test -p cloakleak
+      - name: Zero-leak gate (prose)
+        run: |
+          cargo run -q -p cloakleak-cli -- run --sut cloakpipe-regex --track prose > scoreboard-prose.json
+      - name: Zero-leak gate (tool_json)
+        run: |
+          cargo run -q -p cloakleak-cli -- run --sut cloakpipe-regex --track tool_json > scoreboard-tool-json.json
+      - name: Upload scoreboards
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloakleak-scoreboards
+          path: |
+            scoreboard-prose.json
+            scoreboard-tool-json.json

@@ -1,0 +1,10 @@
+{"id": "prose-001", "track": "prose", "input": "Hi, please file PAN ABCDE1234F under my account.", "expected_entities": ["pan"], "modality": "support_ticket"}
+{"id": "prose-002", "track": "prose", "input": "My Aadhaar is 1234 1234 1234, can you link it?", "expected_entities": ["aadhaar"], "modality": "support_ticket"}
+{"id": "prose-003", "track": "prose", "input": "Pay alice@oksbi via UPI and email receipt to bob@example.com", "expected_entities": ["upi", "email"], "modality": "instruction"}
+{"id": "prose-004", "track": "prose", "input": "GSTIN 27ABCDE1234F1Z5 for invoice", "expected_entities": ["gstin"], "modality": "invoice"}
+{"id": "prose-005", "track": "prose", "input": "Beneficiary IFSC SBIN0001234", "expected_entities": ["ifsc"], "modality": "banking"}
+{"id": "prose-006", "track": "prose", "input": "My SSN is 123-45-6789 for the KYC", "expected_entities": ["ssn"], "modality": "kyc"}
+{"id": "prose-007", "track": "prose", "input": "Card on file: 4111 1111 1111 1111 expires soon.", "expected_entities": ["card"], "modality": "billing"}
+{"id": "prose-008", "track": "prose", "input": "Voter ID ABC1234567 should match", "expected_entities": ["voter_id"], "modality": "kyc"}
+{"id": "prose-009", "track": "prose", "input": "Mujhe +91 9876543210 pe call karo, mera PAN ABCDE1234F hai", "expected_entities": ["phone", "pan"], "modality": "hinglish"}
+{"id": "prose-010", "track": "prose", "input": "Please write a haiku about the sunrise.", "expected_entities": [], "modality": "clean"}

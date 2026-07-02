@@ -1,0 +1,10 @@
+{"id": "tool-001", "track": "tool_json", "input": "{\"name\": \"send_email\", \"args\": {\"to\": \"alice@example.com\", \"subject\": \"KYC\", \"body\": \"Your Aadhaar 1234 1234 1234 is verified.\"}}", "expected_entities": ["email", "aadhaar"], "modality": "mcp_args"}
+{"id": "tool-002", "track": "tool_json", "input": "{\"name\": \"create_invoice\", \"args\": {\"customer_pan\": \"ABCDE1234F\", \"gstin\": \"27ABCDE1234F1Z5\", \"ifsc\": \"SBIN0001234\"}}", "expected_entities": ["pan", "gstin", "ifsc"], "modality": "mcp_args"}
+{"id": "tool-003", "track": "tool_json", "input": "{\"name\": \"lookup_user\", \"args\": {\"phone\": \"+91 9876543210\", \"voter_id\": \"ABC1234567\"}}", "expected_entities": ["phone", "voter_id"], "modality": "mcp_args"}
+{"id": "tool-004", "track": "tool_json", "input": "{\"name\": \"pay_upi\", \"args\": {\"handle\": \"alice@oksbi\", \"amount\": 500}}", "expected_entities": ["upi"], "modality": "mcp_args"}
+{"id": "tool-005", "track": "tool_json", "input": "{\"name\": \"store_card\", \"args\": {\"number\": \"4111 1111 1111 1111\", \"ssn_backup\": \"123-45-6789\"}}", "expected_entities": ["card", "ssn"], "modality": "mcp_args"}
+{"id": "tool-006", "track": "tool_json", "input": "{\"name\": \"send_sms\", \"args\": {\"to\": \"+91 9876543210\", \"body\": \"Your OTP is 482931\"}}", "expected_entities": ["phone"], "modality": "mcp_args"}
+{"id": "tool-007", "track": "tool_json", "input": "{\"name\": \"weather\", \"args\": {\"city\": \"mumbai\"}}", "expected_entities": [], "modality": "clean"}
+{"id": "tool-008", "track": "tool_json", "input": "{\"name\": \"send_email\", \"args\": {\"to\": \"alice@example.com\", \"subject\": \"meeting\", \"body\": \"Lunch tomorrow?\"}}", "expected_entities": ["email"], "modality": "mcp_args"}
+{"id": "tool-009", "track": "tool_json", "input": "{\"name\": \"initiate_payment\", \"args\": {\"from_account\": \"12345678901234\", \"ifsc\": \"SBIN0001234\"}}", "expected_entities": ["ifsc"], "modality": "mcp_args"}
+{"id": "tool-010", "track": "tool_json", "input": "{\"name\": \"lookup_pan\", \"args\": {\"pan\": \"ABCDE1234F\"}}", "expected_entities": ["pan"], "modality": "mcp_args"}
