@@ -9,6 +9,9 @@ members = [
     "crates/cloakpipe-audit",
     "crates/cloakpipe-mcp",
     "crates/cloakpipe-cli",
+    "crates/cloakpipe-ledger",
+    "crates/cloakleak",
+    "crates/cloakleak-cli",
 ]
 
 [workspace.package]
@@ -76,5 +79,5 @@ lopdf = "0.34"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # UUID + time
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
