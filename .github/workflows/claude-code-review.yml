@@ -90,12 +90,3 @@ jobs:
           # Read-only repo access plus the ability to post review comments.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-
-      # TEMPORARY diagnostic: surface the raw API error the action swallows.
-      - name: Dump Claude execution output
-        if: always()
-        run: |
-          echo "===== claude-execution-output.json ====="
-          cat "${RUNNER_TEMP}/claude-execution-output.json" 2>/dev/null \
-            || cat /home/runner/work/_temp/claude-execution-output.json 2>/dev/null \
-            || echo "(execution output file not found)"
