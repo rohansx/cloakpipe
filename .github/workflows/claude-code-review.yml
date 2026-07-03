@@ -90,4 +90,3 @@ jobs:
           # Read-only repo access plus the ability to post review comments.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
-            --debug
