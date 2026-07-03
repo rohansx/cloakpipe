@@ -1,0 +1,94 @@
+name: Claude Reviewer
+
+# Automated PR review powered by Claude Code.
+# Auth: OAuth token from a Claude subscription (Pro/Max/Team), NOT an API key.
+# Generate it locally with `claude setup-token` and store the value as the
+# repository secret CLAUDE_CODE_OAUTH_TOKEN
+# (Settings -> Secrets and variables -> Actions -> New repository secret).
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+# Cancel an in-flight review when new commits are pushed to the same PR,
+# so we only pay for a review of the latest state.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    # Skip drafts — review once the PR is marked ready.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude Reviewer
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the built-in Actions token to post comments, so the Claude
+          # GitHub App does not need to be installed on the repo. Comments
+          # appear as github-actions[bot]. (To have them appear as "Claude"
+          # and re-trigger CI, install https://github.com/apps/claude and
+          # drop this line.)
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Post a tracking comment with progress checkboxes as the review runs.
+          track_progress: true
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are reviewing a pull request for CloakPipe — a Rust-native
+            privacy proxy that detects, masks, and unmasks PII in LLM traffic,
+            plus a cryptographic ledger/verifier (chain, signatures, anchors,
+            proofs). Correctness and privacy guarantees matter more than style.
+
+            Focus your review on:
+
+            1. **Privacy / leak safety** (highest priority)
+               - Any code path where PII could pass through unmasked, be logged,
+                 persisted, or emitted in errors, telemetry, or panics.
+               - Mask/unmask round-trip correctness and placeholder collisions.
+               - New entity handling that could regress the zero-leak gates.
+
+            2. **Cryptographic integrity**
+               - Ledger hashing/chaining, signature verification, anchors, and
+                 Merkle proofs — verify no check is weakened, skipped, or made
+                 to fail open. Constant-time comparisons where relevant.
+
+            3. **Rust correctness**
+               - `unwrap`/`expect`/`panic!` on paths reachable from untrusted
+                 input; unhandled `Result`/`Option`; integer/slice panics.
+               - `unsafe` blocks, incorrect lifetimes, and concurrency hazards
+                 (data races, deadlocks, `.await` while holding a lock).
+               - Error handling that silently swallows failures.
+
+            4. **Performance**
+               - Regressions on the hot masking path (target <5ms); needless
+                 allocations or clones in per-request code.
+
+            5. **Testing**
+               - Adequate coverage for new logic; missing edge cases; whether
+                 cloakleak / verifier gates still hold.
+
+            Report concrete issues as inline comments on the exact lines. Use a
+            top-level comment for the summary and any general observations. Be
+            specific and cite file:line. Do not flag pure style nits unless they
+            affect correctness or safety.
+
+          # Read-only repo access plus inline review comments. No `gh pr comment`:
+          # track_progress already owns a single tracked comment for the summary,
+          # so freeform top-level comments would only create duplicates.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*)"
