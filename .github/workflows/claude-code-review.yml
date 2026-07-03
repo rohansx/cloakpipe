@@ -35,6 +35,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the built-in Actions token to post comments, so the Claude
+          # GitHub App does not need to be installed on the repo. Comments
+          # appear as github-actions[bot]. (To have them appear as "Claude"
+          # and re-trigger CI, install https://github.com/apps/claude and
+          # drop this line.)
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
           # Post a tracking comment with progress checkboxes as the review runs.
           track_progress: true
