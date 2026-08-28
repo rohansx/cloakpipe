@@ -11,6 +11,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(handlers::health))
         .route("/v1/chat/completions", post(handlers::proxy_chat_completions))
+        .route("/v1/messages", post(handlers::proxy_anthropic_messages))
+        .route("/v1/anthropic/messages", post(handlers::proxy_anthropic_messages))
         .route("/v1/embeddings", post(handlers::proxy_embeddings))
         // CloakTree endpoints
         .route("/tree/index", post(tree_handlers::tree_index_text))

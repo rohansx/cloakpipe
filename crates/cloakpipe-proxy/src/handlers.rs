@@ -220,6 +220,109 @@ pub async fn proxy_chat_completions(
     }
 }
 
+/// Proxy handler for the Anthropic Messages API.
+pub async fn proxy_anthropic_messages(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(mut body): Json<Value>,
+) -> Result<Response, (StatusCode, String)> {
+    let request_id = Uuid::new_v4().to_string();
+    let model = body
+        .get("model")
+        .and_then(|model| model.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let is_streaming = body
+        .get("stream")
+        .and_then(|stream| stream.as_bool())
+        .unwrap_or(false);
+    let entities_count = pseudonymize_messages(&state, &mut body, &request_id, None)
+        .await
+        .map_err(|error| {
+            tracing::error!(request_id = %request_id, "Pseudonymization failed: {error}");
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Pseudonymization failed: {error}"))
+        })?;
+    tracing::info!(request_id = %request_id, entities = entities_count, model = %model, "Forwarding pseudonymized Anthropic request");
+
+    let upstream_url = format!(
+        "{}/v1/messages",
+        state.config.proxy.upstream.trim_end_matches('/')
+    );
+    let anthropic_version = headers
+        .get("anthropic-version")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("2023-06-01");
+    let mut request = state
+        .http_client
+        .post(&upstream_url)
+        .header("Content-Type", "application/json")
+        .header("x-api-key", &state.api_key)
+        .header("anthropic-version", anthropic_version)
+        .json(&body);
+    if let Some(beta) = headers.get("anthropic-beta") {
+        request = request.header("anthropic-beta", beta);
+    }
+
+    let upstream_response = request.send().await.map_err(|error| {
+        tracing::error!(request_id = %request_id, "Upstream Anthropic request failed: {error}");
+        (StatusCode::BAD_GATEWAY, format!("Upstream request failed: {error}"))
+    })?;
+    let status = upstream_response.status();
+    if !status.is_success() {
+        let error_body = upstream_response.text().await.unwrap_or_default();
+        return Ok(Response::builder()
+            .status(StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY))
+            .header("Content-Type", "application/json")
+            .body(Body::from(error_body))
+            .unwrap());
+    }
+
+    if is_streaming {
+        let stream = streaming::rehydrate_anthropic_stream(
+            upstream_response,
+            state.vault.clone(),
+            request_id.clone(),
+        ).await;
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "text/event-stream")
+            .header("Cache-Control", "no-cache")
+            .header("X-CloakPipe-Request-Id", &request_id)
+            .body(Body::from_stream(stream))
+            .unwrap());
+    }
+
+    let response_text = upstream_response.text().await.map_err(|error| {
+        (StatusCode::BAD_GATEWAY, format!("Failed to read upstream response: {error}"))
+    })?;
+    let mut response_json: Value = serde_json::from_str(&response_text).map_err(|error| {
+        (StatusCode::BAD_GATEWAY, format!("Invalid upstream JSON: {error}"))
+    })?;
+    let vault = state.vault.lock().await;
+    if let Some(content) = response_json.get_mut("content").and_then(Value::as_array_mut) {
+        for block in content {
+            if let Some(text) = block
+                .get_mut("text")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+            {
+                let rehydrated = Rehydrator::rehydrate(&text, &vault).map_err(|error| {
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to rehydrate response: {error}"))
+                })?;
+                block["text"] = Value::String(rehydrated.text);
+                let _ = state.audit.log_rehydrate(&request_id, rehydrated.rehydrated_count);
+            }
+        }
+    }
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("X-CloakPipe-Request-Id", &request_id)
+        .body(Body::from(serde_json::to_string(&response_json).unwrap()))
+        .unwrap())
+}
+
 /// Proxy handler for /v1/embeddings.
 pub async fn proxy_embeddings(
     State(state): State<Arc<AppState>>,

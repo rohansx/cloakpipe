@@ -98,3 +98,65 @@ pub async fn rehydrate_stream(
         }
     }
 }
+
+/// Consume an Anthropic Messages SSE response and rehydrate text deltas.
+pub async fn rehydrate_anthropic_stream(
+    response: reqwest::Response,
+    vault: Arc<Mutex<Vault>>,
+    request_id: String,
+) -> impl Stream<Item = Result<String, std::io::Error>> {
+    let mut buffer = String::new();
+
+    async_stream::stream! {
+        let byte_stream = response.text().await.unwrap_or_default();
+
+        for line in byte_stream.lines() {
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(data) {
+                    let text = event
+                        .get("delta")
+                        .and_then(|delta| delta.get("text"))
+                        .and_then(|text| text.as_str())
+                        .map(str::to_string);
+
+                    if let Some(text) = text {
+                        let vault_guard = vault.lock().await;
+                        let (rehydrated, _) = Rehydrator::rehydrate_chunk(
+                            &text,
+                            &mut buffer,
+                            &vault_guard,
+                        ).unwrap_or((text, false));
+
+                        if let Some(delta) = event.get_mut("delta") {
+                            delta["text"] = serde_json::Value::String(rehydrated);
+                        }
+                    }
+
+                    let serialized = serde_json::to_string(&event).unwrap_or_default();
+                    yield Ok(format!("data: {serialized}\n\n"));
+                } else {
+                    yield Ok(format!("data: {data}\n\n"));
+                }
+            } else if line.starts_with("event: ") || !line.is_empty() {
+                yield Ok(format!("{line}\n"));
+            }
+        }
+
+        if !buffer.is_empty() {
+            let flushed = {
+                let vault_guard = vault.lock().await;
+                Rehydrator::rehydrate(&buffer, &vault_guard)
+                    .map(|result| result.text)
+                    .unwrap_or_else(|_| buffer.clone())
+            };
+            tracing::debug!(request_id = %request_id, "Flushing remaining Anthropic stream buffer");
+            if !flushed.is_empty() {
+                let event = serde_json::json!({
+                    "type": "content_block_delta",
+                    "delta": { "type": "text_delta", "text": flushed }
+                });
+                yield Ok(format!("data: {event}\n\n"));
+            }
+        }
+    }
+}
