@@ -1,0 +1,54 @@
+{
+ "provider": "modal",
+ "model": "meta-models/Muse-Spark-Open-816B-A42B",
+ "replies": [
+  {
+   "request": "12a71e635f94f59d",
+   "reply": {
+    "text": "I'll pull up ticket T-1042 to see what you need.",
+    "tool_calls": [
+     {
+      "id": "call_64c5905f7ad244ef9b7bf2ef",
+      "name": "read_ticket",
+      "arguments": {
+       "ticket_id": "T-1042"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "request": "7e91ad2e8da8651c",
+   "reply": {
+    "text": "Your order arrived late and damaged \u2014 I'll process your $40 shipping refund and send a confirmation email.",
+    "tool_calls": [
+     {
+      "id": "call_1f78affd85a546fda6aff4a9",
+      "name": "issue_refund",
+      "arguments": {
+       "ticket_id": "T-1042",
+       "amount": 40
+      }
+     },
+     {
+      "id": "call_7db9587afae54dcd8f0914b8",
+      "name": "send_email",
+      "arguments": {
+       "ticket_id": "T-1042",
+       "to": "dana@customer.example",
+       "subject": "Re: Late delivery, order #8812",
+       "body": "Hi Dana,\n\nI'm sorry to hear your order #8812 arrived late and with a damaged box.\n\nI have refunded the $40 shipping fee to your original payment method. Please allow 3-5 business days for it to appear on your statement.\n\nThank you for your patience, and please let us know if there's anything else we can do.\n\nBest regards,\nAcme Appliances Support"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "request": "ce206e10f267c9f3",
+   "reply": {
+    "text": "Completed ticket T-1042: Refunded $40 shipping fee for order #8812 and emailed confirmation to dana@customer.example.",
+    "tool_calls": []
+   }
+  }
+ ]
+}

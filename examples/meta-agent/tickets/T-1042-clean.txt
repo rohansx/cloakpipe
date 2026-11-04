@@ -1,0 +1,6 @@
+Ticket T-1042
+From: Dana Reyes <dana@customer.example>
+Subject: Late delivery, order #8812
+
+Hi, my order #8812 arrived a week late and the box was damaged. Could you
+refund the 40 shipping fee and email me to confirm? Thanks, Dana

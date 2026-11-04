@@ -1,0 +1,45 @@
+# The meta-agent demo's manifest: the support-agent example's contract (../support-agent),
+# plus `show: [amount]`, so an approver deciding on the dashboard sees the amount.
+# The support agent's manifest (Example 2): one file says which tools the
+# agent may call and what each call may carry. Closed by default: a tool not
+# listed here is refused as undeclared_tool, and an argument not listed under
+# its tool as undeclared_argument.
+#
+# Values under one_of_context come from the trusted task context the
+# orchestrator writes (task-context.json), never from the model.
+#
+# A call that passes the contract below is then checked against the Cedar
+# policy (rate limits, refund tiers); see policies/support.cedar.
+release: support-agent
+version: 2026.10.3
+policy: ../support-agent/policies/support.cedar
+tools:
+  read_ticket:
+    args:
+      ticket_id: { type: string, pattern: "^T-[0-9]{4,}$", one_of_context: ["ticket.id"], required: true }
+  send_email:
+    args:
+      ticket_id: { type: string, one_of_context: ["ticket.id"], required: true }
+      # The customer on the ticket being worked, or anyone inside the company.
+      to: { type: string, one_of_context: ["ticket.customer_email"], or_pattern: "@ourcompany\\.com$", required: true }
+      subject: { type: string, max_len: 200, required: true }
+      body: { type: string, max_len: 4000, required: true }
+    side_effect: true
+    # A retry of the same email for the same ticket is the same operation:
+    # it is answered from the operations store, never sent twice.
+    idempotency_key: "{ticket_id}:{sha256(body)}"
+  issue_refund:
+    args:
+      ticket_id: { type: string, one_of_context: ["ticket.id"], required: true }
+      # Whole currency units: Cedar compares integers (Long).
+      amount: { type: integer, min: 0, max: 500, required: true }
+    side_effect: true
+    # Refunds over 100 need a signed approval receipt for that exact call,
+    # valid for at most 15 minutes. (The policy's @approval says the same;
+    # either one is enough to require it.)
+    approval:
+      when: "amount > 100"
+      approvers: ["slack:#support-leads"]
+      ttl: 15m
+      # What the approver sees on the request (dashboard, Slack): the amount only.
+      show: [amount]
