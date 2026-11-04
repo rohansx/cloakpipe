@@ -1,0 +1,13 @@
+{
+ "provider": "modal",
+ "model": "meta-models/Muse-Spark-Open-816B-A42B",
+ "replies": [
+  {
+   "request": "b1d48a6e905a25ca",
+   "reply": {
+    "text": "release: support-agent-proposed\nversion: \"1\"\ntools:\n  read_ticket:\n    args:\n      ticket_id: { type: string, one_of_context: [\"ticket.id\"], required: true }\n  issue_refund:\n    args:\n      ticket_id: { type: string, one_of_context: [\"ticket.id\"], required: true }\n      amount: { type: integer, min: 1, max: 400, required: true }\n    side_effect: true\n    approval:\n      when: \"amount > 40\"\n      approvers: [\"slack:#support-leads\"]\n      ttl: 15m\n  send_email:\n    args:\n      ticket_id: { type: string, one_of_context: [\"ticket.id\"], required: true }\n      to: { type: string, one_of_context: [\"ticket.customer_email\"], required: true }\n      subject: { type: string, max_len: 200, required: true }\n      body: { type: string, max_len: 2000, required: true }\n    side_effect: true",
+    "tool_calls": []
+   }
+  }
+ ]
+}

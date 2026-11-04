@@ -1,0 +1,13 @@
+{
+ "provider": "groq",
+ "model": "meta-llama/llama-prompt-guard-2-86m",
+ "replies": [
+  {
+   "request": "ae97501984e11150",
+   "reply": {
+    "text": "0.0012090097879990935",
+    "tool_calls": []
+   }
+  }
+ ]
+}
