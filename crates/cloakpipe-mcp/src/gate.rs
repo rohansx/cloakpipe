@@ -744,6 +744,11 @@ impl ToolGate {
         self.tools.contains(tool)
     }
 
+    /// The tools the release declares, sorted.
+    pub fn declared_tools(&self) -> Vec<String> {
+        self.tools.iter().cloned().collect()
+    }
+
     /// The release's manifest hash (`sha256:<hex>`).
     pub fn release(&self) -> &str {
         &self.release

@@ -40,8 +40,14 @@ pub struct McpProxyArgs {
     /// Upstream MCP server command + args, e.g.
     /// --upstream "npx -y @modelcontextprotocol/server-filesystem /data"
     /// (the server named `default`)
-    #[arg(long, required_unless_present_any = ["upstream_url", "servers"], conflicts_with = "upstream_url")]
+    #[arg(long, required_unless_present_any = ["upstream_url", "servers", "decide"], conflicts_with = "upstream_url")]
     pub upstream: Option<String>,
+    /// Decide an agent framework's own tool calls instead of proxying an
+    /// MCP server (with --listen): POST /decide {"tool", "arguments"} answers
+    /// allow, deny, approve or replay, and POST /outcome {"call", "result"}
+    /// records what the tool returned. The framework runs the tool itself.
+    #[arg(long, requires = "listen", conflicts_with_all = ["upstream", "upstream_url", "servers", "tools_lock"])]
+    pub decide: bool,
     /// Another upstream MCP server, as NAME=COMMAND (repeatable): the gate
     /// starts each, merges their tools/list and routes each tools/call to the
     /// server that serves the tool. A tool name two servers share refuses to

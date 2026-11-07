@@ -38,7 +38,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -50,7 +50,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::proxy::{flush_events, write_line, Action, Interceptor, ProxyContext, Upstream, UpstreamTransport, EVENT_FLUSH, UPSTREAM_UNAVAILABLE};
+use crate::proxy::{flush_events, write_line, Action, Interceptor, ProxyContext, Upstream, UpstreamTransport, DEFAULT_SERVER, EVENT_FLUSH, UPSTREAM_UNAVAILABLE};
 use crate::servers::{StdioServer, DISCOVERY_TIMEOUT};
 use crate::tools_lock::ToolsLock;
 
@@ -473,9 +473,97 @@ impl StdioLink {
     }
 }
 
+// ── upstream side: the agent framework's own tools (`--decide`) ─────────
+
+/// The upstream behind `POST /decide`: there is no MCP server. A
+/// `tools/call` the gate forwards is held until `POST /outcome` reports
+/// what the framework's tool returned, which becomes the upstream's reply
+/// (so the ledger records the outcome, and a side-effecting call left
+/// without one is `unknown` at shutdown). Everything else the gate would
+/// send a server (`initialize`, `tools/list`, `ping`) is answered here.
+pub(crate) struct DeferredLink {
+    /// Forwarded calls awaiting their outcome, by the id they went out
+    /// under: the message as sent.
+    pending: Mutex<HashMap<u64, String>>,
+    deliver: Deliver,
+}
+
+impl DeferredLink {
+    fn new(deliver: Deliver) -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+            deliver,
+        }
+    }
+
+    fn send(&self, message: String) {
+        let Ok(msg) = serde_json::from_str::<Value>(&message) else {
+            return;
+        };
+        let id = msg.get("id").cloned().filter(|id| !id.is_null());
+        let Some(method) = msg.get("method").and_then(Value::as_str) else {
+            return;
+        };
+        let Some(id) = id else { return }; // a notification takes no answer
+        match method {
+            "tools/call" => {
+                if let (Some(n), Ok(mut p)) = (id.as_u64(), self.pending.lock()) {
+                    p.insert(n, message);
+                }
+            }
+            "initialize" => self.answer(
+                id,
+                serde_json::json!({
+                    "protocolVersion": crate::servers::PROTOCOL_VERSION,
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "cloakpipe-decide", "version": env!("CARGO_PKG_VERSION") },
+                }),
+            ),
+            "tools/list" => self.answer(id, serde_json::json!({ "tools": [] })),
+            "ping" => self.answer(id, serde_json::json!({})),
+            _ => {
+                let reply = serde_json::json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32601, "message": "Method not found" } });
+                (self.deliver)(Incoming::Message(reply.to_string()));
+            }
+        }
+    }
+
+    fn answer(&self, id: Value, result: Value) {
+        let reply = serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": result });
+        (self.deliver)(Incoming::Message(reply.to_string()));
+    }
+
+    /// Whether call `n` was forwarded and awaits its outcome.
+    fn holds(&self, n: u64) -> bool {
+        self.pending
+            .lock()
+            .map(|p| p.contains_key(&n))
+            .unwrap_or(false)
+    }
+
+    /// The outcome of call `n`: `Ok(result)` is the tool's MCP result
+    /// (`content`, `isError`), `Err(error)` means the tool never answered
+    /// (a timeout, a crash): the call fails closed, `unknown` if it has
+    /// side effects. `false` when `n` is not awaiting an outcome.
+    fn settle(&self, n: u64, outcome: Result<Value, String>) -> bool {
+        let Some(message) = self.pending.lock().ok().and_then(|mut p| p.remove(&n)) else {
+            return false;
+        };
+        let incoming = match outcome {
+            Ok(result) => Incoming::Message(
+                serde_json::json!({ "jsonrpc": "2.0", "id": n, "result": result }).to_string(),
+            ),
+            Err(error) => Incoming::Failed { message, error },
+        };
+        (self.deliver)(incoming);
+        true
+    }
+}
+
 enum Link {
     Stdio(StdioLink),
     Http(Mutex<Option<HttpClient>>),
+    Deferred(Arc<DeferredLink>),
 }
 
 impl Link {
@@ -492,6 +580,7 @@ impl Link {
                 Some(Some(client)) => client.send(message),
                 _ => tracing::warn!("upstream client stopped; message dropped"),
             },
+            Link::Deferred(link) => link.send(message),
         }
     }
 
@@ -503,6 +592,9 @@ impl Link {
                     client.close();
                 }
             }
+            // Calls still awaiting an outcome are left in flight: `finish`
+            // records them `unknown`.
+            Link::Deferred(_) => {}
         }
     }
 }
@@ -602,6 +694,8 @@ struct Hub {
     sessions: Mutex<HashSet<String>>,
     token: Option<String>,
     health: Value,
+    /// `--decide`: the framework's own tools, behind `/decide` and `/outcome`.
+    deferred: Option<Arc<DeferredLink>>,
 }
 
 /// Serve MCP over HTTP at `config.addr` in front of `upstream` until
@@ -628,19 +722,49 @@ where
     serve_with(config, Upstreams::Routed(upstreams, lock), ctx, shutdown).await
 }
 
+/// [`serve`] with no MCP server behind the gate (`mcp-proxy --listen …
+/// --decide`): the agent framework asks the gate about its own tools.
+///
+/// - `POST /decide` takes `{"tool": …, "arguments": {…}}` and answers
+///   `{"decision": "allow", "call": N}` (run it, then report), `{"decision":
+///   "deny", "reason": …, "message": …, "data": {…}}` (the gate's refusal, as
+///   the agent would see it), `{"decision": "approve", …}` (a refusal whose
+///   reason is `approval_required`: hold the call for a human) or
+///   `{"decision": "replay", "result": …}` (a side-effecting call already
+///   done, answered from the operations store).
+/// - `POST /outcome` takes `{"call": N, "result": …}` (`result` is the
+///   tool's output: a string, or an MCP result with `content`; `is_error`
+///   marks a failure) or `{"call": N, "error": "…"}` (the tool never
+///   answered) and records it.
+///
+/// Both need the listen token, when there is one. Every decision goes to
+/// the ledger exactly as over MCP.
+pub async fn serve_decide<F>(config: ListenConfig, ctx: ProxyContext, shutdown: F) -> Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    serve_with(config, Upstreams::Deferred, ctx, shutdown).await
+}
+
 enum Upstreams {
     One(Upstream),
     Routed(Vec<Upstream>, Option<ToolsLock>),
+    Deferred,
 }
 
 async fn serve_with<F>(config: ListenConfig, upstreams: Upstreams, ctx: ProxyContext, shutdown: F) -> Result<()>
 where
     F: Future<Output = ()> + Send + 'static,
 {
+    let mode = ctx.gate.as_ref().map(|g| match g.mode {
+        crate::GateMode::Enforce => "enforce",
+        crate::GateMode::Shadow => "shadow",
+    });
     let health = match &ctx.gate {
-        Some(gate) => serde_json::json!({ "status": "ok", "release": gate.release_name(), "release_digest": gate.release() }),
-        None => serde_json::json!({ "status": "ok", "release": Value::Null, "release_digest": Value::Null }),
+        Some(gate) => serde_json::json!({ "status": "ok", "release": gate.release_name(), "release_digest": gate.release(), "mode": mode, "tools": gate.declared_tools() }),
+        None => serde_json::json!({ "status": "ok", "release": Value::Null, "release_digest": Value::Null, "mode": mode }),
     };
+    let mut deferred = None;
     let listener = tokio::net::TcpListener::bind(config.addr).await.with_context(|| format!("--listen {}: cannot bind", config.addr))?;
     let local = listener.local_addr()?;
     let upstream_gone = Arc::new(tokio::sync::Notify::new());
@@ -711,6 +835,17 @@ where
             let _ = dispatch.links.set(links);
             dispatch
         }
+        Upstreams::Deferred => {
+            let dispatch = Arc::new(Dispatch { interceptor: Interceptor::new(ctx)?, waiters: Mutex::new(HashMap::new()), links: Default::default() });
+            let deliver: Deliver = {
+                let dispatch = dispatch.clone();
+                Arc::new(move |incoming| dispatch.deliver(DEFAULT_SERVER, incoming))
+            };
+            let link = Arc::new(DeferredLink::new(deliver));
+            deferred = Some(link.clone());
+            let _ = dispatch.links.set(HashMap::from([(DEFAULT_SERVER.to_string(), Link::Deferred(link))]));
+            dispatch
+        }
     };
     for link in dispatch.links.get().into_iter().flat_map(HashMap::values) {
         link.begin();
@@ -721,18 +856,22 @@ where
         sessions: Mutex::new(HashSet::new()),
         token: config.token,
         health,
+        deferred,
     });
 
     if !local.ip().is_loopback() {
         let token = if hub.token.is_some() { "" } else { " and no --listen-token-file is set: anyone who can reach it can use the gate's tools" };
         eprintln!("warning: --listen {local} is not a loopback address{token}");
     }
-    eprintln!("cloakpipe: MCP over HTTP listening on http://{local}/mcp");
-
-    let app = Router::new()
-        .route("/mcp", get(get_mcp).post(post_mcp).delete(delete_mcp))
-        .route("/health", get(get_health))
-        .with_state(hub.clone());
+    let app = Router::new().route("/mcp", get(get_mcp).post(post_mcp).delete(delete_mcp)).route("/health", get(get_health));
+    let app = if hub.deferred.is_some() {
+        eprintln!("cloakpipe: decisions served on http://{local}/decide (outcomes on /outcome)");
+        app.route("/decide", post(post_decide)).route("/outcome", post(post_outcome))
+    } else {
+        eprintln!("cloakpipe: MCP over HTTP listening on http://{local}/mcp");
+        app
+    };
+    let app = app.with_state(hub.clone());
     let gone = upstream_gone.clone();
     let exited = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let stop = {
@@ -965,6 +1104,191 @@ async fn post_mcp(State(hub): State<Arc<Hub>>, headers: HeaderMap, body: Bytes) 
         None
     };
     json_response(reply, issued.as_deref())
+}
+
+// ── agent side: `/decide` and `/outcome` (`--decide`) ───────────────────
+
+fn plain_json(status: StatusCode, body: Value) -> Response {
+    (
+        status,
+        [(header::CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response()
+}
+
+fn bad_request(message: &str) -> Response {
+    plain_json(
+        StatusCode::BAD_REQUEST,
+        serde_json::json!({ "error": message }),
+    )
+}
+
+/// `POST /decide`: one tool call the framework is about to run, decided by
+/// the gate as a `tools/call` would be (see [`serve_decide`]).
+async fn post_decide(State(hub): State<Arc<Hub>>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Err(resp) = hub.admit(&headers) {
+        return *resp;
+    }
+    let Some(deferred) = hub.deferred.clone() else {
+        return plain_json(
+            StatusCode::NOT_FOUND,
+            serde_json::json!({ "error": "not serving decisions (start with --decide)" }),
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<Value>(&body) else {
+        return bad_request("the body must be a JSON object");
+    };
+    let Some(tool) = req
+        .get("tool")
+        .and_then(Value::as_str)
+        .filter(|t| !t.is_empty())
+    else {
+        return bad_request("\"tool\" (the tool's name) is required");
+    };
+    let arguments = match req.get("arguments") {
+        None | Some(Value::Null) => Value::Object(Default::default()),
+        Some(args) if args.is_object() => args.clone(),
+        Some(_) => return bad_request("\"arguments\" must be a JSON object"),
+    };
+    let n = hub.next_id.fetch_add(1, Ordering::SeqCst);
+    let call = serde_json::json!({ "jsonrpc": "2.0", "id": n, "method": "tools/call", "params": { "name": tool, "arguments": arguments } });
+    let line = call.to_string();
+    // A waiter, so a reply the gate gives later (a replay settled by the
+    // operations store) is not mistaken for an upstream message to drop.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    if let Ok(mut w) = hub.dispatch.waiters.lock() {
+        w.insert(
+            n,
+            Waiter {
+                session: "decide".into(),
+                original: Value::from(n),
+                reply: tx,
+            },
+        );
+    }
+    let decided = {
+        let hub = hub.clone();
+        tokio::task::spawn_blocking(move || hub.dispatch.interceptor.on_agent_line(&line)).await
+    };
+    let Ok(actions) = decided else {
+        return plain_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "decision": "deny", "reason": "fail_closed", "message": "Internal error" }),
+        );
+    };
+    let mut direct = None;
+    for action in actions {
+        match action {
+            Action::ToAgent(reply) if direct.is_none() => direct = Some(reply),
+            Action::ToAgent(_) => tracing::debug!("a second direct answer; dropped"),
+            Action::ToUpstream { server, message } => hub.dispatch.send(&server, message),
+        }
+    }
+    if let Ok(mut w) = hub.dispatch.waiters.lock() {
+        w.remove(&n);
+    }
+    drop(rx);
+    if deferred.holds(n) {
+        return plain_json(
+            StatusCode::OK,
+            serde_json::json!({ "decision": "allow", "call": n, "mode": hub.health.get("mode") }),
+        );
+    }
+    let Some(reply) = direct.and_then(|r| serde_json::from_str::<Value>(&r).ok()) else {
+        return plain_json(
+            StatusCode::OK,
+            serde_json::json!({ "decision": "deny", "reason": "fail_closed", "message": "the gate gave no answer" }),
+        );
+    };
+    if let Some(result) = reply.get("result") {
+        return plain_json(
+            StatusCode::OK,
+            serde_json::json!({ "decision": "replay", "result": result, "mode": hub.health.get("mode") }),
+        );
+    }
+    let error = reply.get("error").cloned().unwrap_or_default();
+    let reason = error
+        .pointer("/data/reason")
+        .and_then(Value::as_str)
+        .unwrap_or("fail_closed")
+        .to_string();
+    let decision = if reason == "approval_required" {
+        "approve"
+    } else {
+        "deny"
+    };
+    plain_json(
+        StatusCode::OK,
+        serde_json::json!({
+            "decision": decision,
+            "reason": reason,
+            "message": error.get("message"),
+            "code": error.get("code"),
+            "data": error.get("data"),
+            "mode": hub.health.get("mode"),
+        }),
+    )
+}
+
+/// `POST /outcome`: what a call allowed by `/decide` returned.
+async fn post_outcome(State(hub): State<Arc<Hub>>, headers: HeaderMap, body: Bytes) -> Response {
+    if let Err(resp) = hub.admit(&headers) {
+        return *resp;
+    }
+    let Some(deferred) = hub.deferred.clone() else {
+        return plain_json(
+            StatusCode::NOT_FOUND,
+            serde_json::json!({ "error": "not serving decisions (start with --decide)" }),
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<Value>(&body) else {
+        return bad_request("the body must be a JSON object");
+    };
+    let Some(n) = req.get("call").and_then(Value::as_u64) else {
+        return bad_request("\"call\" (the id /decide answered with) is required");
+    };
+    let outcome = match (req.get("error"), req.get("result")) {
+        (Some(Value::String(error)), _) => Err(error.clone()),
+        (Some(_), _) => return bad_request("\"error\" must be a string"),
+        (None, result) => {
+            let is_error = req
+                .get("is_error")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let result = match result {
+                // An MCP result already.
+                Some(r) if r.get("content").is_some() => r.clone(),
+                Some(Value::String(text)) => {
+                    serde_json::json!({ "content": [{ "type": "text", "text": text }], "isError": is_error })
+                }
+                Some(Value::Null) | None => {
+                    serde_json::json!({ "content": [], "isError": is_error })
+                }
+                Some(other) => {
+                    serde_json::json!({ "content": [{ "type": "text", "text": other.to_string() }], "isError": is_error })
+                }
+            };
+            Ok(result)
+        }
+    };
+    let settled = {
+        let deferred = deferred.clone();
+        tokio::task::spawn_blocking(move || deferred.settle(n, outcome))
+            .await
+            .unwrap_or(false)
+    };
+    if settled {
+        plain_json(
+            StatusCode::OK,
+            serde_json::json!({ "recorded": true, "call": n }),
+        )
+    } else {
+        plain_json(
+            StatusCode::NOT_FOUND,
+            serde_json::json!({ "recorded": false, "call": n, "error": "no such call awaits an outcome" }),
+        )
+    }
 }
 
 #[cfg(test)]

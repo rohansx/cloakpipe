@@ -460,9 +460,13 @@ pub async fn mcp_proxy(config_path: &str, args: crate::gate::McpProxyArgs) -> Re
     };
     let pii = args.pii();
     // The upstream servers and the tools lock, checked before anything runs.
-    let mut upstreams = match crate::gate::upstreams_from_args(&args) {
-        Ok(u) => u,
-        Err(code) => std::process::exit(code),
+    let mut upstreams = if args.decide {
+        Vec::new()
+    } else {
+        match crate::gate::upstreams_from_args(&args) {
+            Ok(u) => u,
+            Err(code) => std::process::exit(code),
+        }
     };
     let tools_lock = match &args.tools_lock {
         Some(path) => match crate::tools::load_lock("--tools-lock", path) {
@@ -584,6 +588,7 @@ pub async fn mcp_proxy(config_path: &str, args: crate::gate::McpProxyArgs) -> Re
     let listening = listen.is_some();
     let result = match listen {
         // The agent over HTTP; stops on Ctrl-C / SIGTERM.
+        Some(config) if args.decide => cloakpipe_mcp::http::serve_decide(config, ctx, shutdown_signal()).await,
         Some(config) if routed => cloakpipe_mcp::http::serve_servers(config, upstreams, ctx, tools_lock, shutdown_signal()).await,
         Some(config) => cloakpipe_mcp::http::serve(config, upstreams.remove(0), ctx, shutdown_signal()).await,
         None => tokio::task::spawn_blocking(move || {
