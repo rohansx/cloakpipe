@@ -458,6 +458,10 @@ pub async fn mcp_proxy(config_path: &str, args: crate::gate::McpProxyArgs) -> Re
         Ok(gate) => gate,
         Err(code) => std::process::exit(code),
     };
+    let capture = match crate::gate::capture_from_args(&args, gate.as_ref()) {
+        Ok(c) => c,
+        Err(code) => std::process::exit(code),
+    };
     let pii = args.pii();
     // The upstream servers and the tools lock, checked before anything runs.
     let mut upstreams = match crate::gate::upstreams_from_args(&args) {
@@ -580,6 +584,7 @@ pub async fn mcp_proxy(config_path: &str, args: crate::gate::McpProxyArgs) -> Re
         gate,
         decisions,
         events: sinks.clone(),
+        capture,
     };
     let listening = listen.is_some();
     let result = match listen {

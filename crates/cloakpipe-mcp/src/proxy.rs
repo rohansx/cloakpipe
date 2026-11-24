@@ -49,6 +49,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::capture::Capture;
 use crate::catalog::{Catalog, Drift};
 use crate::events::{DecisionRecord, EventKind, EventSink, GateEvent};
 use crate::servers::{ServerTools, StdioServer, DISCOVERY_TIMEOUT, GATE_NAME, PROTOCOL_VERSION};
@@ -86,6 +87,9 @@ pub struct ProxyContext {
     /// Where gate events go ([`crate::events`]): each sink gets every
     /// event, after its ledger entry is written. Empty: none are emitted.
     pub events: Vec<Arc<dyn EventSink>>,
+    /// Opt-in local capture of raw tool calls and listings for `cloakpipe
+    /// infer` ([`crate::capture`]); `None` (the default) records none.
+    pub capture: Option<Capture>,
 }
 
 /// The gate's decision ledger: the ledger database the entries are
@@ -262,6 +266,8 @@ pub struct Interceptor {
     /// One upstream: the agent's `tools/list` requests awaiting a reply
     /// (request id, serialized), whose listings are checked for drift.
     list_requests: Mutex<HashSet<String>>,
+    /// Local capture of raw calls and listings, if on.
+    capture: Option<Capture>,
 }
 
 impl Interceptor {
@@ -347,6 +353,7 @@ impl Interceptor {
             catalog,
             router,
             list_requests: Mutex::new(HashSet::new()),
+            capture: ctx.capture,
         })
     }
 
@@ -449,6 +456,11 @@ impl Interceptor {
                     }
                 }
                 if msg.get("method").and_then(Value::as_str) == Some("tools/call") {
+                    // The raw call, before any gate verdict or PII transform.
+                    if let Some(capture) = &self.capture {
+                        let tool = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
+                        capture.call(tool, msg.pointer("/params/arguments"));
+                    }
                     if let (Some(gate), Some(base)) = (gate, &self.base) {
                         let tool = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("").to_string();
                         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -715,6 +727,10 @@ impl Interceptor {
         let (tenant, agent, release) = (self.tenant, self.agent, self.release);
         let out = match serde_json::from_str::<Value>(line) {
             Ok(mut msg) => {
+                // A tools/list reply, as the agent sees it.
+                if let (Some(capture), Some(tools)) = (&self.capture, msg.pointer("/result/tools").and_then(Value::as_array)) {
+                    capture.tools(tools);
+                }
                 // The reply to a side-effecting call settles its operation
                 // before the agent sees it.
                 let settled = settle_reply(&self.operations, &self.pending, &msg, pii.is_some());

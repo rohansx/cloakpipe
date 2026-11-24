@@ -49,7 +49,7 @@ impl Collect {
 }
 
 fn ctx(gate: Option<ToolGate>, decisions: Option<DecisionLog>, sink: &Arc<Collect>) -> ProxyContext {
-    ProxyContext { pii: None, ledger_db: None, release: None, gate, decisions, events: vec![sink.clone() as Arc<dyn EventSink>] }
+    ProxyContext { pii: None, ledger_db: None, release: None, gate, decisions, events: vec![sink.clone() as Arc<dyn EventSink>], capture: None }
 }
 
 fn tool(name: &str, description: &str) -> Value {

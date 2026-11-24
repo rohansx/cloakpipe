@@ -171,6 +171,19 @@ pub struct McpProxyArgs {
     /// them and no vault is used.
     #[arg(long, value_parser = ["pii"])]
     pub transform: Option<String>,
+    /// Record every tools/call (raw arguments), tools/list reply and the task
+    /// context to a local JSONL file in this directory, for `cloakpipe
+    /// infer`. Shadow mode (or no --manifest) only. Owner-only files, never
+    /// sent anywhere.
+    #[arg(long, value_name = "DIR")]
+    pub capture: Option<PathBuf>,
+    /// With --capture: keep only the shape of each string (length, pattern
+    /// class, salted hash), never its value.
+    #[arg(long = "capture-shapes", requires = "capture")]
+    pub capture_shapes: bool,
+    /// With --capture: first delete capture files older than this many days.
+    #[arg(long = "capture-max-age", value_name = "DAYS", requires = "capture")]
+    pub capture_max_age: Option<u64>,
 }
 
 impl McpProxyArgs {
@@ -203,7 +216,8 @@ impl McpProxyArgs {
             || self.anchoring.any()
             || self.events.any()
             || !self.tool_contracts.is_empty()
-            || self.task_context.is_some()
+            // A capture records the task context without a gate.
+            || (self.task_context.is_some() && self.capture.is_none())
             || self.approvals.is_some()
             || !self.approver_keys.is_empty()
             || self.broker.any()
@@ -229,6 +243,11 @@ fn load_release(path: &Path) -> Res<AgentRelease> {
 /// Build the tool gate for `mcp-proxy`; `Ok(None)` without `--manifest`.
 /// Problems are reported on stderr.
 pub(crate) fn gate_from_args(a: &McpProxyArgs) -> Res<Option<cloakpipe_mcp::ToolGate>> {
+    // Raw arguments are captured only where nothing is enforced.
+    let shadow = a.mode.as_deref() == Some("shadow") || a.gate.as_deref() == Some("warn");
+    if a.capture.is_some() && a.manifest.is_some() && !shadow {
+        return Err(usage(CAPTURE_SHADOW_ONLY));
+    }
     let Some(manifest_path) = &a.manifest else {
         if a.any_gate_flag() {
             return Err(usage("release gate flags need --manifest (the release they are about)"));
@@ -444,6 +463,29 @@ pub(crate) fn upstreams_from_args(a: &McpProxyArgs) -> Res<Vec<cloakpipe_mcp::Up
         headers.push((name.to_string(), value));
     }
     Ok(vec![cloakpipe_mcp::Upstream::http(name, url.clone(), headers)])
+}
+
+const CAPTURE_SHADOW_ONLY: &str = "--capture is only available in shadow mode (--mode shadow) or without --manifest";
+
+/// `--capture`: `Ok(None)` without it. Raw arguments are recorded only
+/// where nothing is enforced: in shadow mode, or without a gate.
+pub(crate) fn capture_from_args(a: &McpProxyArgs, gate: Option<&cloakpipe_mcp::ToolGate>) -> Res<Option<cloakpipe_mcp::Capture>> {
+    let Some(dir) = &a.capture else { return Ok(None) };
+    if gate.is_some_and(|g| g.mode == cloakpipe_mcp::GateMode::Enforce) {
+        return Err(usage(CAPTURE_SHADOW_ONLY));
+    }
+    if let Some(days) = a.capture_max_age {
+        let n = cloakpipe_mcp::capture::prune(dir, std::time::Duration::from_secs(days.saturating_mul(86_400)))
+            .map_err(|e| usage(format_args!("--capture {}: {e}", dir.display())))?;
+        if n > 0 {
+            eprintln!("cloakpipe: deleted {n} capture file(s) older than {days} days");
+        }
+    }
+    let task = task_context(a)?;
+    let capture = cloakpipe_mcp::Capture::open(dir, task.as_ref(), a.capture_shapes)
+        .map_err(|e| usage(format_args!("--capture {}: {e}", dir.display())))?;
+    eprintln!("cloakpipe: capturing tool calls to {} (local only; delete it after `cloakpipe infer`)", capture.path().display());
+    Ok(Some(capture))
 }
 
 /// `--listen` with its token: `Ok(None)` without `--listen`.

@@ -119,6 +119,7 @@ fn run_steps(dir: &Path, gate: ToolGate, lose_ack: bool, steps: &[(String, usize
         gate: Some(gate),
         decisions: Some(DecisionLog::open(ledger_db.to_str().unwrap(), GateKey::from_seed([9; 32])).unwrap()),
         events: vec![recorder.clone(), Arc::new(cloakpipe_mcp::NoopSink)],
+        capture: None,
     };
     let (mut agent, proxy_side) = UnixStream::pair().unwrap();
     let out = Capture::default();

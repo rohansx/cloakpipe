@@ -120,6 +120,7 @@ fn setup_with(stub: StubBroker, url: Option<String>) -> Setup {
         gate: Some(g),
         decisions: Some(DecisionLog::open(ledger.to_str().unwrap(), GateKey::from_seed([9; 32])).unwrap()),
         events: vec![events.clone()],
+        capture: None,
     };
     let gate = Interceptor::new(ctx).unwrap();
     Setup { stub, broker, gate, events, approvals, ledger, release, _dir: dir }

@@ -230,6 +230,7 @@ fn ctx_with(gate: ToolGate, ledger_db: &Path, pii: Option<PiiTransform>) -> Prox
         gate: Some(gate),
         decisions: Some(decision_log(ledger_db)),
         events: Vec::new(),
+        capture: None,
     }
 }
 

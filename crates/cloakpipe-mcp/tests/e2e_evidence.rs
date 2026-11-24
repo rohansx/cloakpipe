@@ -77,6 +77,7 @@ fn pii_never_reaches_tool_and_evidence_verifies_offline() {
         gate: None,
         decisions: None,
         events: Vec::new(),
+        capture: None,
     };
 
     let request = serde_json::json!({

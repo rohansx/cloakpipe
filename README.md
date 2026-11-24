@@ -193,6 +193,14 @@ permit (principal == Release::"support-agent", action == Action::"issue_refund",
 when { resource.args.amount > 100 && resource.args.amount <= 500 };
 ```
 
+Don't want to write it by hand? Run the gate in shadow mode with
+`--capture ./captures/`, use the agent, and `cloakpipe infer ./captures/`
+drafts the manifest from what it actually did: tools, types, ranges, enums,
+patterns and task bindings (`one_of_context`), each rule annotated with its
+evidence, outliers excluded and listed for review, never activated for you.
+`infer --diff` checks new traffic against the active contract in CI. See
+[docs/INFER.md](docs/INFER.md).
+
 `cloakpipe manifest validate` checks both files and `cloakpipe manifest hash`
 prints the digest every decision is bound to. Reference:
 [docs/MANIFEST.md](docs/MANIFEST.md), [docs/POLICY.md](docs/POLICY.md) and
@@ -405,6 +413,14 @@ Details: [docs/EVENTS.md](docs/EVENTS.md).
   side effects. It needs no network and no trust in the operator. The
   standalone `cloakpipe-verify` binary does the same.
 
+- **Attack proof.** `cloakpipe prove --agent agent.yaml --contract
+  cloakpipe.manifest.yaml --pack support-basics --runs 5` runs your live
+  agent through an attack pack with the gate in shadow mode, then in enforce
+  mode (locally, in Docker or on E2B), and reports which attacks reached the
+  tools, which were refused and why, and whether normal work still completes.
+  Every enforce run's ledger ships as an audit pack that `cloakpipe verify`
+  checks. See [docs/PROVE.md](docs/PROVE.md).
+
 Details: [docs/ACTION_BOUNDARY.md](docs/ACTION_BOUNDARY.md#the-decision-ledger),
 [docs/ANCHORING.md](docs/ANCHORING.md), keys and rotation in
 [docs/KEYS.md](docs/KEYS.md).
@@ -570,6 +586,8 @@ change before 1.0)
 | Topic | Where |
 |---|---|
 | Manifest format | [docs/MANIFEST.md](docs/MANIFEST.md), [JSON Schema](schemas/cloakpipe.manifest.schema.json) |
+| Drafting a contract from shadow traffic (`infer`, `--capture`) | [docs/INFER.md](docs/INFER.md) |
+| Attack proof against a live agent (`prove`, attack packs, sandboxes) | [docs/PROVE.md](docs/PROVE.md) |
 | Cedar policies, entities, counters | [docs/POLICY.md](docs/POLICY.md) |
 | Contracts, approvals, operations, the decision ledger | [docs/ACTION_BOUNDARY.md](docs/ACTION_BOUNDARY.md) |
 | Approvals through a broker: setup and the open protocol | [docs/APPROVALS.md](docs/APPROVALS.md) |

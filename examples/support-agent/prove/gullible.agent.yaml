@@ -1,0 +1,5 @@
+# A scripted agent that always falls for the attack: `cloakpipe prove` in CI,
+# with no model and no API key. See gullible_agent.py.
+name: gullible-support-agent
+command: [python3, gullible_agent.py]
+timeout: 60

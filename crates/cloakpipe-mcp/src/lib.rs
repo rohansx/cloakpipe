@@ -10,6 +10,7 @@
 //! results.
 
 pub mod broker;
+pub mod capture;
 mod catalog;
 pub mod events;
 pub mod gate;
@@ -29,6 +30,7 @@ pub use proxy::{
     Interceptor, PiiTransform, ProxyContext, Upstream, UpstreamTransport, DEFAULT_SERVER, EVENT_FLUSH, RECONCILE_REQUIRED, TOOL_REFUSED,
     UPSTREAM_UNAVAILABLE,
 };
+pub use capture::Capture;
 pub use http::ListenConfig;
 pub use servers::ServerTools;
 pub use tools_lock::ToolsLock;
