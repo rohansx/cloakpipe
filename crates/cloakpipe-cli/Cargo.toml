@@ -46,6 +46,7 @@ reqwest = { workspace = true, features = ["blocking"] }
 dialoguer.workspace = true
 shell-words = "1"
 uuid.workspace = true
+regex.workspace = true
 
 [features]
 # The default build is the lean gate: mcp-proxy, its evidence tooling and

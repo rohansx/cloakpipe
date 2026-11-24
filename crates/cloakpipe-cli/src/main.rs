@@ -17,9 +17,11 @@ mod commands;
 mod events;
 mod evidence;
 mod gate;
+mod infer;
 mod keys;
 mod manifest;
 mod operations;
+mod prove;
 mod release;
 mod tools;
 mod verify;
@@ -135,6 +137,15 @@ enum Commands {
         #[command(subcommand)]
         action: cert::EvalCommands,
     },
+    /// Draft a contract from tool calls captured in shadow mode
+    /// (`mcp-proxy --capture`), or diff captured traffic against one (--diff)
+    Infer(Box<infer::InferArgs>),
+    /// Run a live agent through an attack pack with the gate off (shadow) and
+    /// on (enforce), and report which attacks reached the tools
+    Prove(Box<prove::ProveArgs>),
+    /// The stub tool server `prove` runs behind the gate (internal)
+    #[command(hide = true)]
+    ProveStub(prove::stub::StubArgs),
     /// Scan files/directories for PII (RAG pre-indexing pipeline)
     Scan {
         /// Input file or directory (recursively scans .txt, .md, .json, .csv)
@@ -257,6 +268,9 @@ fn main() -> anyhow::Result<()> {
         Commands::Ledger { action } => std::process::exit(evidence::run(action)),
         Commands::Verify(args) => std::process::exit(verify::run(args)),
         Commands::Events { action } => std::process::exit(events::run(action)),
+        Commands::Infer(args) => std::process::exit(infer::run(*args)),
+        Commands::Prove(args) => std::process::exit(prove::run(*args)),
+        Commands::ProveStub(args) => std::process::exit(prove::stub::run(args)),
         other => other,
     };
 
@@ -299,7 +313,10 @@ async fn run(command: Commands, config: String) -> anyhow::Result<()> {
         | Commands::Tools { .. }
         | Commands::Ledger { .. }
         | Commands::Verify(_)
-        | Commands::Events { .. } => unreachable!("handled above"),
+        | Commands::Events { .. }
+        | Commands::Infer(_)
+        | Commands::Prove(_)
+        | Commands::ProveStub(_) => unreachable!("handled above"),
         Commands::Scan { input, output, strategy, detect_only, min_confidence } => {
             commands::scan(&config, input, output, strategy, detect_only, min_confidence).await
         }

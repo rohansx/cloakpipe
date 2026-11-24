@@ -81,6 +81,7 @@ fn run(gate: ToolGate, lines: &[String]) -> (Capture, String, Vec<DecisionEntry>
         gate: Some(gate),
         decisions: Some(DecisionLog::open(ledger_db.to_str().unwrap(), GateKey::from_seed([1; 32])).unwrap()),
         events: Vec::new(),
+        capture: None,
     };
     let out = Capture::default();
     let input = Cursor::new(lines.iter().map(|l| format!("{l}\n")).collect::<String>().into_bytes());

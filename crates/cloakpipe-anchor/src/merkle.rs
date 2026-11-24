@@ -129,8 +129,8 @@ impl MerkleTree {
         assert!(index < total, "leaf index {index} out of range {total}");
         let mut steps = Vec::new();
         let mut idx = index;
-        for level in 0..self.levels.len() - 1 {
-            let cur = &self.levels[level];
+        // Every level but the root's.
+        for cur in &self.levels[..self.levels.len() - 1] {
             let sibling_idx = if idx.is_multiple_of(2) { idx + 1 } else { idx - 1 };
             let sibling = if sibling_idx < cur.len() {
                 cur[sibling_idx]

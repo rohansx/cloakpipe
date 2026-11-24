@@ -255,6 +255,7 @@ fn context(dir: &Path, events: Vec<Arc<dyn EventSink>>) -> ProxyContext {
         gate: Some(support_gate(dir)),
         decisions: Some(DecisionLog::open(ledger.to_str().unwrap(), GateKey::from_seed([9; 32])).unwrap()),
         events,
+        capture: None,
     }
 }
 

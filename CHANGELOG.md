@@ -9,6 +9,44 @@ may contain breaking changes; these are marked **Breaking**.
 
 ## [Unreleased]
 
+Writing the first contract was the biggest hurdle to adopting the gate.
+`cloakpipe infer` now drafts it from what the agent actually does, and
+`cloakpipe prove` shows the contract working against a live agent.
+
+### Added
+
+- `mcp-proxy --capture <dir>`: opt-in local capture of every `tools/call`
+  (raw arguments, before the gate and any PII transform), every `tools/list`
+  reply and the task context, for `infer`. Shadow mode (or no manifest) only;
+  owner-only files that never leave the machine. `--capture-shapes` keeps
+  only each string's length, pattern class and a salted hash (task binding
+  still works); `--capture-max-age DAYS` prunes old captures
+  ([docs/INFER.md](docs/INFER.md)).
+- `cloakpipe infer <captures>`: drafts a manifest from captured calls:
+  tools, types, ranges, enums, patterns, task binding (`one_of_context`,
+  with an `or_pattern` for recurring internal domains) and suggested
+  approvals. Outliers (calls the agent may have been tricked into) are
+  excluded and listed for review, never widened into a rule. Every rule
+  carries its support, confidence and a redacted example. The draft is loaded
+  with the gate's own parser and checked against every captured call; it is
+  never activated. `--diff <manifest>` reports new tools, refused calls and
+  rules that could be tightened, exiting 1 on drift for CI.
+- `cloakpipe prove --agent agent.yaml --contract <manifest> --pack
+  support-basics --runs N --sandbox local|docker|e2b`: runs a live agent
+  through an attack pack with the gate in shadow and in enforce mode, and
+  reports which attacks reached the tools, which were refused and why, and
+  whether normal work still completes. The built-in `support-basics` pack
+  covers exfiltration by email, an undeclared tool, an oversized refund, a
+  double side effect, argument stretching and a control. HTML and JSON
+  reports; every enforce run's ledger is exported and verified offline.
+  Exits 1 when an attack reaches a tool or false refusals exceed
+  `--max-false-refusal-rate` ([docs/PROVE.md](docs/PROVE.md)).
+
+### Changed
+
+- **Breaking** (library): `cloakpipe_mcp::ProxyContext` has a new field,
+  `capture: Option<Capture>`; struct literals need `capture: None`.
+
 ## [0.14.0] - 2026-10-29
 
 Approvals can now go through a broker, such as CloakPipe Cloud or your own:

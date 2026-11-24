@@ -20,7 +20,7 @@ fn call(id: u64, tool: &str) -> String {
 }
 
 fn ctx(gate: Option<ToolGate>, decisions: Option<DecisionLog>) -> ProxyContext {
-    ProxyContext { pii: None, ledger_db: None, release: None, gate, decisions, events: Vec::new() }
+    ProxyContext { pii: None, ledger_db: None, release: None, gate, decisions, events: Vec::new(), capture: None }
 }
 
 fn agent_message(actions: &[Action]) -> Value {

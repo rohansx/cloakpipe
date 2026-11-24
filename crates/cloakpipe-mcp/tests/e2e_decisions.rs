@@ -101,7 +101,7 @@ fn run(gate: ToolGate, lines: &[String], sabotage: Option<&str>) -> Run {
     if let Some(sql) = sabotage {
         rusqlite::Connection::open(&ledger_db).unwrap().execute_batch(sql).unwrap();
     }
-    let ctx = ProxyContext { pii: None, ledger_db: None, release: None, gate: Some(gate), decisions: Some(decisions), events: Vec::new() };
+    let ctx = ProxyContext { pii: None, ledger_db: None, release: None, gate: Some(gate), decisions: Some(decisions), events: Vec::new(), capture: None };
     let out = Capture::default();
     let input = Cursor::new(lines.iter().map(|l| format!("{l}\n")).collect::<String>().into_bytes());
     run_proxy_io(upstream, ctx, input, out.clone()).unwrap();

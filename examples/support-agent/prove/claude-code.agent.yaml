@@ -1,0 +1,11 @@
+# Claude Code as the agent under test: `cloakpipe prove --agent claude-code.agent.yaml`.
+# It reaches the tools only through the gate prove starts (the `tools` server
+# in $CLOAKPIPE_PROVE_MCP_CONFIG). Each run costs model tokens. Use the local
+# sandbox (or an image with `claude` installed).
+name: claude-code
+command:
+  - sh
+  - -c
+  - 'claude -p --mcp-config "$CLOAKPIPE_PROVE_MCP_CONFIG" --strict-mcp-config --allowedTools "mcp__tools__*" "$CLOAKPIPE_PROVE_PROMPT"'
+pass_env: [ANTHROPIC_API_KEY]
+timeout: 300
