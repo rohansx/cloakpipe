@@ -26,9 +26,9 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = { workspace = true }
 zeroize = { workspace = true }
 tempfile = "3"
-cloakpipe-anchor = { path = "../cloakpipe-anchor", version = "0.14.0" }
+cloakpipe-anchor = { path = "../cloakpipe-anchor", version = "0.15.0" }
 # The audit pack's tar writer (the same code the verifier reads it with).
-cloakpipe-verify = { path = "../cloakpipe-verify", version = "0.14.0" }
+cloakpipe-verify = { path = "../cloakpipe-verify", version = "0.15.0" }
 
 [dev-dependencies]
 proptest = "1"

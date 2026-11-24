@@ -11,7 +11,7 @@ categories = ["text-processing"]
 description = "CloakTree: vectorless, reasoning-based document retrieval for CloakPipe's optional RAG tooling"
 
 [dependencies]
-cloakpipe-core = { path = "../cloakpipe-core", version = "0.14.0" }
+cloakpipe-core = { path = "../cloakpipe-core", version = "0.15.0" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

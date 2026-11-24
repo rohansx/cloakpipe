@@ -9,6 +9,8 @@ may contain breaking changes; these are marked **Breaking**.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-24
+
 Writing the first contract was the biggest hurdle to adopting the gate.
 `cloakpipe infer` now drafts it from what the agent actually does, and
 `cloakpipe prove` shows the contract working against a live agent.
@@ -778,7 +780,8 @@ the lean gate. Licence: MIT only.
 
 - First release: privacy middleware for LLM and RAG pipelines.
 
-[Unreleased]: https://github.com/rohansx/cloakpipe/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/rohansx/cloakpipe/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/rohansx/cloakpipe/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/rohansx/cloakpipe/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/rohansx/cloakpipe/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/rohansx/cloakpipe/compare/v0.11.0...v0.12.0

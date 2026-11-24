@@ -15,19 +15,19 @@ name = "cloakpipe"
 path = "src/main.rs"
 
 [dependencies]
-cloakpipe-core = { path = "../cloakpipe-core", version = "0.14.0" }
-cloakpipe-proxy = { path = "../cloakpipe-proxy", version = "0.14.0" }
-cloakpipe-audit = { path = "../cloakpipe-audit", version = "0.14.0" }
-cloakpipe-tree = { path = "../cloakpipe-tree", version = "0.14.0", optional = true }
-cloakpipe-vector = { path = "../cloakpipe-vector", version = "0.14.0", optional = true }
-cloakpipe-mcp = { path = "../cloakpipe-mcp", version = "0.14.0" }
-cloakpipe-release = { path = "../cloakpipe-release", version = "0.14.0" }
+cloakpipe-core = { path = "../cloakpipe-core", version = "0.15.0" }
+cloakpipe-proxy = { path = "../cloakpipe-proxy", version = "0.15.0" }
+cloakpipe-audit = { path = "../cloakpipe-audit", version = "0.15.0" }
+cloakpipe-tree = { path = "../cloakpipe-tree", version = "0.15.0", optional = true }
+cloakpipe-vector = { path = "../cloakpipe-vector", version = "0.15.0", optional = true }
+cloakpipe-mcp = { path = "../cloakpipe-mcp", version = "0.15.0" }
+cloakpipe-release = { path = "../cloakpipe-release", version = "0.15.0" }
 # Legacy: only the `certification` feature builds the certification commands.
-cloakpipe-cert = { path = "../cloakpipe-cert", version = "0.14.0", optional = true }
-cloakpipe-receipt = { path = "../cloakpipe-receipt", version = "0.14.0" }
-cloakpipe-anchor = { path = "../cloakpipe-anchor", version = "0.14.0" }
-cloakpipe-ledger = { path = "../cloakpipe-ledger", version = "0.14.0" }
-cloakpipe-verify = { path = "../cloakpipe-verify", version = "0.14.0" }
+cloakpipe-cert = { path = "../cloakpipe-cert", version = "0.15.0", optional = true }
+cloakpipe-receipt = { path = "../cloakpipe-receipt", version = "0.15.0" }
+cloakpipe-anchor = { path = "../cloakpipe-anchor", version = "0.15.0" }
+cloakpipe-ledger = { path = "../cloakpipe-ledger", version = "0.15.0" }
+cloakpipe-verify = { path = "../cloakpipe-verify", version = "0.15.0" }
 ed25519-dalek = "2"
 sha2 = "0.10"
 hex = "0.4"
