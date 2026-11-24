@@ -25,7 +25,7 @@ base64 = "0.23"
 reqwest = { workspace = true, features = ["blocking"] }
 # The external anchors are verified before a receipt is returned, with the
 # same standalone code an auditor runs.
-cloakpipe-verify = { path = "../cloakpipe-verify", version = "0.14.0" }
+cloakpipe-verify = { path = "../cloakpipe-verify", version = "0.15.0" }
 # `testkit` only: local TSA and Rekor stand-ins for tests (same versions the
 # verifier already uses, so nothing new is built).
 der = { version = "0.7", features = ["alloc", "derive", "oid"], optional = true }

@@ -570,7 +570,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cloakleak"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "regex",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "cloakleak-cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "cloakleak",
@@ -591,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-anchor"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-audit"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-cert"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-core"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -714,7 +714,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-ledger"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -738,14 +738,14 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-local"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
 ]
 
 [[package]]
 name = "cloakpipe-mcp"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -776,7 +776,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-policy"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "cedar-policy",
  "chrono",
@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-proxy"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-receipt"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -829,7 +829,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-release"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "hex",
  "hmac",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-tree"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -867,7 +867,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-vector"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "rand 0.8.6",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "cloakpipe-verify"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",

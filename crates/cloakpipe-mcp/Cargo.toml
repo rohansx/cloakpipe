@@ -11,13 +11,13 @@ categories = ["development-tools"]
 description = "MCP tool-call gate for CloakPipe: contract checks, approvals, side-effect tracking and evidence on every tools/call"
 
 [dependencies]
-cloakpipe-core = { path = "../cloakpipe-core", version = "0.14.0" }
-cloakpipe-ledger = { path = "../cloakpipe-ledger", version = "0.14.0" }
-cloakpipe-release = { path = "../cloakpipe-release", version = "0.14.0" }
-cloakpipe-receipt = { path = "../cloakpipe-receipt", version = "0.14.0" }
-cloakpipe-policy = { path = "../cloakpipe-policy", version = "0.14.0" }
+cloakpipe-core = { path = "../cloakpipe-core", version = "0.15.0" }
+cloakpipe-ledger = { path = "../cloakpipe-ledger", version = "0.15.0" }
+cloakpipe-release = { path = "../cloakpipe-release", version = "0.15.0" }
+cloakpipe-receipt = { path = "../cloakpipe-receipt", version = "0.15.0" }
+cloakpipe-policy = { path = "../cloakpipe-policy", version = "0.15.0" }
 # Legacy: only the `certification` feature verifies certification statements.
-cloakpipe-cert = { path = "../cloakpipe-cert", version = "0.14.0", optional = true }
+cloakpipe-cert = { path = "../cloakpipe-cert", version = "0.15.0", optional = true }
 base64 = { version = "0.23", optional = true }
 chrono = { workspace = true }
 rmcp = { workspace = true }

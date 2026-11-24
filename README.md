@@ -56,7 +56,7 @@ Every step is asserted. It replays the recorded model replies, so it needs
 no API key:
 
 ```bash
-cargo install --locked cloakpipe-cli@0.14.0
+cargo install --locked cloakpipe-cli@0.15.0
 git clone https://github.com/rohansx/cloakpipe && cd cloakpipe/examples/meta-agent
 ./demo.sh            # replay; ./demo.sh live to call the model yourself
 ```
@@ -72,8 +72,8 @@ Install the binary from crates.io (Rust stable), and clone the repository
 for the example:
 
 ```bash
-cargo install --locked cloakpipe-cli@0.14.0     # installs `cloakpipe`
-git clone --branch v0.14.0 https://github.com/rohansx/cloakpipe && cd cloakpipe
+cargo install --locked cloakpipe-cli@0.15.0     # installs `cloakpipe`
+git clone --branch v0.15.0 https://github.com/rohansx/cloakpipe && cd cloakpipe
 ```
 
 Run the example in [`examples/support-agent`](examples/support-agent). The
@@ -557,6 +557,15 @@ change before 1.0)
   `approval_denied`, `cloakpipe approvals keys`): an open protocol,
   verified receipts only ([docs/APPROVALS.md](docs/APPROVALS.md))
 
+**v0.15.0** (24 November 2026):
+
+- [x] Draft a contract from shadow traffic: `mcp-proxy --capture`,
+  `cloakpipe infer` (task binding, outliers excluded, evidence on every
+  rule) and `infer --diff` for CI ([docs/INFER.md](docs/INFER.md))
+- [x] Attack proof against a live agent: `cloakpipe prove` with the
+  `support-basics` pack, local, Docker and E2B sandboxes, HTML and JSON
+  reports with verified audit packs ([docs/PROVE.md](docs/PROVE.md))
+
 **Next**
 
 - [ ] Prebuilt binaries, and a one-command install for
@@ -600,8 +609,8 @@ change before 1.0)
 
 ## Install and build options
 
-`cargo install --locked cloakpipe-cli@0.14.0` installs `cloakpipe` from
-crates.io, and `cargo install --locked cloakpipe-verify@0.14.0` the
+`cargo install --locked cloakpipe-cli@0.15.0` installs `cloakpipe` from
+crates.io, and `cargo install --locked cloakpipe-verify@0.15.0` the
 standalone verifier. From a checkout, use `--path crates/cloakpipe-cli`
 (or `crates/cloakpipe-verify`) instead.
 

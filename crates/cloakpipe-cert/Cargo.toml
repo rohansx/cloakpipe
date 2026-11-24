@@ -11,8 +11,8 @@ categories = ["cryptography", "development-tools"]
 description = "Legacy agent-release certification for CloakPipe (`certification` feature): evaluation runs, certification decisions, signed attestations"
 
 [dependencies]
-cloakpipe-release = { path = "../cloakpipe-release", version = "0.14.0" }
-cloakpipe-receipt = { path = "../cloakpipe-receipt", version = "0.14.0" }
+cloakpipe-release = { path = "../cloakpipe-release", version = "0.15.0" }
+cloakpipe-receipt = { path = "../cloakpipe-receipt", version = "0.15.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_json_canonicalizer = "0.3"

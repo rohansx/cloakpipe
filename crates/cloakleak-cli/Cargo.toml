@@ -16,6 +16,6 @@ name = "cloakleak"
 path = "src/main.rs"
 
 [dependencies]
-cloakleak = { path = "../cloakleak", version = "0.14.0" }
+cloakleak = { path = "../cloakleak", version = "0.15.0" }
 anyhow = { workspace = true }
 serde_json = { workspace = true }
