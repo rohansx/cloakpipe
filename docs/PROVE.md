@@ -129,6 +129,20 @@ See [`support-basics.yaml`](../crates/cloakpipe-cli/packs/support-basics.yaml).
 | `docker` | Open-source users and CI | One `docker run --rm` per run. The run directory, the agent directory and the `cloakpipe` binary are mounted at their host paths. The image must run the binary: the default `python:3.12-slim-trixie` (glibc 2.41) does; otherwise pass a Linux build with `--cloakpipe-bin`. |
 | `e2b` | Large parallel packs | Needs `E2B_API_KEY` and the `e2b` Python SDK (`pip install e2b`). One sandbox is prepared from `template` (binary, agent directory, `setup`) and snapshotted; every run starts from the snapshot, so a full pack with repeats runs in parallel (`--parallel 50`). The snapshot is deleted at the end. |
 
+The `cloakpipe` binary runs inside the sandbox, so it must run on the
+image's Linux. A static build runs on any of them, and is what the E2B
+`base` template needs:
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+cargo build --release -p cloakpipe-cli --target x86_64-unknown-linux-musl
+cloakpipe prove … --sandbox e2b --cloakpipe-bin target/x86_64-unknown-linux-musl/release/cloakpipe
+```
+
+With E2B, the full `support-basics` pack with two runs per mode (24
+sandboxes, 12 at a time) finishes in about 15 seconds once the snapshot is
+ready.
+
 Model API keys stay with you: only the variables named in `pass_env` reach
 the sandbox, and the report states the model spend the agent reported.
 

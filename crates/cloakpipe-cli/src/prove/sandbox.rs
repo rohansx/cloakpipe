@@ -175,7 +175,11 @@ impl Sandbox for E2b {
         });
         let log = self.runner.with_file_name("e2b-prepare.log");
         eprintln!("prove: preparing an E2B snapshot from template {} (binary, agent, setup)…", self.template);
-        let r = self.python("prepare", &spec, &log, Duration::from_secs(1800))?;
+        let r = self.python("prepare", &spec, &log, Duration::from_secs(1800)).map_err(|e| {
+            // The usual cause: a binary linked against a newer glibc than the template's.
+            let glibc = std::fs::read_to_string(&log).is_ok_and(|l| l.contains("GLIBC_"));
+            if glibc { format!("{e}: {GLIBC_HINT}") } else { e }
+        })?;
         let id = r.get("snapshot").and_then(|s| s.as_str()).ok_or_else(|| format!("e2b prepare: no snapshot id (see {})", log.display()))?;
         eprintln!("prove: E2B snapshot {id} ready");
         self.snapshot = Some(id.to_string());
@@ -209,6 +213,11 @@ impl Sandbox for E2b {
         }
     }
 }
+
+/// What to do when the sandbox's Linux cannot run this binary.
+const GLIBC_HINT: &str = "the sandbox cannot run this cloakpipe binary (it needs a newer glibc). Build a static one and pass it: \
+rustup target add x86_64-unknown-linux-musl && cargo build --release -p cloakpipe-cli --target x86_64-unknown-linux-musl, \
+then --cloakpipe-bin target/x86_64-unknown-linux-musl/release/cloakpipe";
 
 const E2B_RUNNER: &str = include_str!("e2b_runner.py");
 
