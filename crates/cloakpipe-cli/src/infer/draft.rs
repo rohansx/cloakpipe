@@ -179,11 +179,14 @@ fn suggest_approval(lname: &str, args: &BTreeMap<String, Arg>, kept: &[(usize, O
     if !MONEY_TOOL.iter().any(|v| lname.contains(v)) {
         return None;
     }
-    let (arg, _) = args.iter().find(|(a, spec)| {
+    let (arg, spec) = args.iter().find(|(a, spec)| {
         matches!(spec.spec.ty, Some("integer" | "number")) && AMOUNT_ARG.iter().any(|w| a.to_ascii_lowercase().contains(w))
     })?;
     let top = kept.iter().filter_map(|(_, a)| (*a)?.get(arg)?.as_f64()).fold(f64::MIN, f64::max);
-    (top > 0.0).then(|| format!("{arg} > {}", fmt_num(nice_ceil(top, 1))))
+    // A threshold at or above the drafted max could never fire: round finer.
+    let max = spec.spec.max.as_ref().and_then(Number::as_f64).unwrap_or(f64::INFINITY);
+    let at = Some(nice_ceil(top, 1)).filter(|t| *t < max).unwrap_or_else(|| nice_ceil(top, 2));
+    (top > 0.0).then(|| format!("{arg} > {}", fmt_num(at)))
 }
 
 struct Ctx<'a> {
@@ -623,6 +626,11 @@ mod tests {
         assert_eq!(t.args["ticket_id"].spec.pattern.as_deref(), Some("T\\-[0-9]{4,}"));
         assert_eq!(t.approval.as_deref(), Some("amount > 100"));
         assert!(t.args.values().all(|a| a.required));
+        // Top 120: max 150, so the approval is 120, not 200 (which could never fire).
+        let calls: Vec<(&str, Value)> = (1..=12).map(|i| ("issue_refund", json!({ "amount": 10 * i }))).collect();
+        let t = &infer(&[session(json!({}), calls)], &Options::default()).tools[0];
+        assert_eq!(t.args["amount"].spec.max, Some(Number::from(150)));
+        assert_eq!(t.approval.as_deref(), Some("amount > 120"));
     }
 
     #[test]

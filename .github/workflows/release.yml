@@ -43,15 +43,50 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  # Static Linux binaries: they run in any sandbox image (`prove --sandbox
+  # docker|e2b --cloakpipe-bin`), whatever its glibc.
+  binaries:
+    name: Static binary (${{ matrix.target }})
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked -p cloakpipe-cli --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          name=cloakpipe-${GITHUB_REF_NAME}-${{ matrix.target }}
+          mkdir "$name" && cp target/${{ matrix.target }}/release/cloakpipe LICENSE* README.md "$name"/
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: cloakpipe-*.tar.gz*
+
   release:
     name: GitHub release
     if: github.event_name == 'push'
+    needs: binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          files: dist/*
 
   crates:
     name: Publish to crates.io

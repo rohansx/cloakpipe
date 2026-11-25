@@ -44,7 +44,7 @@ pub struct ProveArgs {
     /// The contract the gate runs (a cloakpipe.manifest.yaml)
     #[arg(long)]
     pub contract: PathBuf,
-    /// A built-in attack pack (support-basics) or a pack file
+    /// A built-in attack pack (support-basics, support-injection) or a pack file
     #[arg(long, default_value = "support-basics")]
     pub pack: String,
     /// Runs per scenario and mode

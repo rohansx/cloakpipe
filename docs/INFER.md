@@ -57,6 +57,19 @@ A capture records what the agent sent. An argument that poses as a shape in
 a capture of raw values (only an agent could send one) is excluded from the
 draft and counted in the review list.
 
+### From OpenTelemetry traces
+
+If the agent is already instrumented, pass its trace export instead:
+`cloakpipe infer traces.json`. `infer` reads OTLP/JSON (one document, or the
+collector's file exporter, one per line). Each trace is a session. Each span
+with `gen_ai.tool.name` is a call, and `gen_ai.tool.call.arguments` (the
+GenAI semantic conventions) holds its arguments. Most instrumentations only
+record the arguments when told to. For task binding, set a span attribute
+`cloakpipe.task` to the task context as JSON. Without it, the draft has
+types, ranges and patterns but no `one_of_context`.
+
+Traces carry raw values. Treat the export like a raw capture.
+
 ## What gets drafted
 
 | Rule | From |
