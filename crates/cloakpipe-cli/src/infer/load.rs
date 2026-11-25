@@ -62,6 +62,16 @@ pub fn capture_files(inputs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// The sessions in one file: a CloakPipe capture, or OpenTelemetry traces
+/// (OTLP/JSON), one session per trace.
+pub fn read_all(path: &Path) -> Result<Vec<Session>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if super::otel::is_otlp(&text) {
+        return super::otel::read(&text).map_err(|e| format!("{}: {e}", path.display()));
+    }
+    read(path).map(|s| vec![s])
+}
+
 /// Read one capture file. Unknown record kinds are skipped; a malformed line
 /// is an error (with its line number).
 pub fn read(path: &Path) -> Result<Session, String> {

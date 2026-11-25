@@ -565,11 +565,12 @@ change before 1.0)
 - [x] Attack proof against a live agent: `cloakpipe prove` with the
   `support-basics` pack, local, Docker and E2B sandboxes, HTML and JSON
   reports with verified audit packs ([docs/PROVE.md](docs/PROVE.md))
+- [x] Static Linux binaries (x86_64, aarch64) on every release; a second
+  attack pack, `support-injection`; `infer` from OpenTelemetry traces
 
 **Next**
 
-- [ ] Prebuilt binaries, and a one-command install for
-  Claude Code, Cursor and Codex
+- [ ] A one-command install for Claude Code, Cursor and Codex
 - [ ] A separate secret and format for each webhook
 - [ ] SSE response streams and a server-to-client `GET /mcp` stream for
   HTTP agents

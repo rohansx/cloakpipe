@@ -9,6 +9,31 @@ may contain breaking changes; these are marked **Breaking**.
 
 ## [Unreleased]
 
+### Added
+
+- Releases attach static Linux binaries (`x86_64` and `aarch64`, musl) with
+  SHA-256 sums. They run in any sandbox image, for
+  `prove --sandbox docker|e2b --cloakpipe-bin`.
+- `cloakpipe prove --pack support-injection`: a second built-in pack with
+  look-alike domains, cross-ticket refunds, unapproved, out-of-range and
+  negative refunds, subject-line smuggling, and an escalation control
+  ([docs/PROVE.md](docs/PROVE.md)).
+- `cloakpipe infer` reads OpenTelemetry traces (OTLP/JSON): spans with
+  `gen_ai.tool.name` and `gen_ai.tool.call.arguments` are calls, one session
+  per trace, and a `cloakpipe.task` attribute gives the task context
+  ([docs/INFER.md](docs/INFER.md)).
+
+### Fixed
+
+- `examples/support-agent/prove/claude-code.agent.yaml`: the prompt was read
+  as another `--allowedTools` value, so every Claude Code run failed. It now
+  follows `--`. The example also turns off Claude Code's built-in tools
+  (`--tools ""`), so the agent cannot read the pack from disk, and sets
+  `MCP_TOOL_TIMEOUT` so a tool that never answers fails after 20 s instead
+  of holding the run until its timeout.
+- `infer` no longer suggests an approval threshold at or above the drafted
+  `max`, where it could never fire.
+
 ## [0.15.0] - 2026-11-24
 
 Writing the first contract was the biggest hurdle to adopting the gate.

@@ -7,7 +7,10 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 /// The packs built into the binary, by name.
-const BUILT_IN: &[(&str, &str)] = &[("support-basics", include_str!("../../packs/support-basics.yaml"))];
+const BUILT_IN: &[(&str, &str)] = &[
+    ("support-basics", include_str!("../../packs/support-basics.yaml")),
+    ("support-injection", include_str!("../../packs/support-injection.yaml")),
+];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -202,6 +205,7 @@ mod tests {
         assert_eq!(p.scenarios.len(), 6);
         let stretch = p.scenarios.iter().find(|s| s.id == "argument-stretching").unwrap();
         assert!(stretch.ticket.len() > 8000, "{}", stretch.ticket.len());
+        assert_eq!(load("support-injection").unwrap().scenarios.len(), 7);
     }
 
     #[test]

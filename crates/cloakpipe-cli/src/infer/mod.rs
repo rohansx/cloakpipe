@@ -20,6 +20,7 @@
 mod diff;
 pub(crate) mod draft;
 pub(crate) mod load;
+mod otel;
 mod redact;
 mod render;
 
@@ -31,7 +32,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Args)]
 pub struct InferArgs {
-    /// Capture files, or directories of them (`mcp-proxy --capture <dir>`)
+    /// Capture files, or directories of them (`mcp-proxy --capture <dir>`), or
+    /// OpenTelemetry trace exports (OTLP/JSON with GenAI tool-call spans)
     #[arg(required = true)]
     pub captures: Vec<PathBuf>,
     /// Write the draft here instead of stdout (refuses to overwrite without --force)
@@ -70,7 +72,7 @@ fn run_inner(a: &InferArgs) -> Res<i32> {
         return Err(usage("--bind-threshold must be between 0.5 and 1"));
     }
     let files = load::capture_files(&a.captures).map_err(usage)?;
-    let sessions = files.iter().map(|f| load::read(f)).collect::<Result<Vec<_>, _>>().map_err(invalid)?;
+    let sessions: Vec<_> = files.iter().map(|f| load::read_all(f)).collect::<Result<Vec<_>, _>>().map_err(invalid)?.into_iter().flatten().collect();
     let opts = draft::Options { min_support: a.min_support as usize, bind_threshold: a.bind_threshold };
     let drafted = draft::infer(&sessions, &opts);
 
